@@ -1,33 +1,53 @@
--- Conant Gardens v0.0.1
--- Dilla time for norns
---
--- based on the work of 
--- Roger Linn, Akai,
--- Dan Charnas, and 
--- James Dewitt Yancey
---
--- E1: Select Track
--- K1: Hold for shift
--- K2: Toggle page
---
--- In Sequence View:
--- E2: Select position
--- E3: Select division
--- K3: Add / remove notes
--- -- Hold K3 to move notes
--- shift+E1: 
--- shift+E2: Track timing
--- shift+E3: Note dynamic
--- shift+K2:
--- shift+K3: Fill notes
---
--- In Sample View
--- E2: Sample start
--- E3: Sample end
--- K3: Load sample
--- shift+E1:
--- shift+E2: Start+end
--- shift+E3: Sample volume
+-- # scholastic
+-- A norns script that borrows ideas from Modalics's Beat Scholar
+-- https://www.modalics.com/beatscholar
+
+-- E1 - Select track 
+-- E2 - Select position
+-- E3 - Change division
+
+-- K1 (long)-
+-- K2 - Randomise (??)
+-- K3 - Insert / remove a note
+
+-- Far left is global settings
+-- Use E3 here to change the number of subdivisions of a track
+
+-- Then inside each subdivision, use E3 to subdivide further
+
+-- Use K3 to add and remove notes at the cursor position, hold to make a selection inside which to add-remove notes quickly
+
+-- Params for changing number of tracks, choosing samples, etc.
+--------
+
+-- new array structure, defines rhythmic display for entire session:
+-- doesn't define anything about the events themselves, just about how we're displaying everything
+-- therefore can refactor most of CG note position structure and playback system
+-- just refactor the display stuff
+
+-- rhythmDisplay{
+-- track{
+-- trackdivision{
+-- beatsubdivision{
+-- hasNote? (bool), dynamic, any other params
+-- }}}}
+
+-- redraw control cursor to follow track rhythm structure
+-- redraw playback cursor to follow track rhythmic structure
+-- factor all that by reading the lengths of the insides of rhythmDisplay
+-- is if track [1] { trackdivision{}.length } = 4, you need to split the track into four beats
+-- then if track [1] trackdision [1] beatsubdivision[1].length = 4, you need to split the first beat of track 1 into four subbeats
+-- and if track [1] trackdivision [1] beatsubdivision[1] hasNote = true, you need to draw that there's a note there, 
+-- and play it when the timing matches, this can also be stores in track/division/subdivision/noteposition
+-- so actually playback can be stored here:
+-- the playback head reads rhythms[1][1][1][hasNote}, and if true, rhythms[1][1][1][noteposition] to see if it matches the clock
+-- ie at each tick, check the array for any notepositions that match the clock position
+-- as you already do with CG
+
+-- turning E3 on track header
+-- increase / decrease trackDivision length
+-- what does that look like?
+-- i = newlength, for i in trackDivision, trackdivision[i] = 0, and null out any that are more than that?
 
 util = require "util"
 fileselect = require "fileselect"
@@ -45,10 +65,10 @@ end
 
 --todo: add this functionality to params - ie 'save session'
 function loadPattern()
-  trackEvents = tab.load(_path.data.."/conantgardens/beat01.txt")
+  trackEvents = tab.load(_path.data.."/scholastic/beat01.txt")
 end
 function savePattern()
-  tab.save(trackEvents,_path.data.."/conantgardens/beat01.txt")
+  tab.save(trackEvents,_path.data.."/scholastic/beat01.txt")
 end
 
 --tick along, play events
@@ -94,7 +114,7 @@ function init()
   beatsAmount = 0 -- number of beats to sequence
   totalBeats = 0 -- number of ticks for the sequencer clock
   -- start params
-  params:add_separator("Conant Gardens")
+  params:add_separator("Scholastic")
   params:add_number("tracksAmount", "Number of Tracks", 1, 8, 4)
   params:set_action("tracksAmount",   function tracksAmount_update(x)
     tracksAmount = x
@@ -109,7 +129,6 @@ function init()
   --end params
 
   currentTrack = 0
-  segmentLength = 6   --start with cursor set to 8th notes:
   resolutions = {1,2,3,4,6,8,12,16,24,32,48,64,96,128,192} -- index to read from resolutions, i.e. resolutions[segmentLength]
   beatCursor = 1 -- initial x position of cursor
 
