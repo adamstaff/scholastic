@@ -27,10 +27,15 @@
 
 -- rhythmDisplay{
 -- track{
--- trackdivision{
--- beatsubdivision{
--- hasNote? (bool), dynamic, any other params
--- }}}}
+-- beatsubdivisions{
+-- }}}
+--
+-- ie rhythmDisplay{
+-- track 1:	{2, 2, 5, 2},		quavers, with a quint
+-- track 2:	{4, 4, 4, 4},		16ths
+-- track 3:	{1, 1, 1, 1, 1, 6},	6 beats, one of which is a sextuple
+-- track 4:	{7}			7:4
+-- }
 
 -- redraw control cursor to follow track rhythm structure
 -- redraw playback cursor to follow track rhythmic structure
@@ -65,11 +70,17 @@
 -- so divide the bar into 4, and then each quarter into 2 or 5
 
 -- we read from these divisions to draw the display:
--- 'display width of beats in bar' = ( 'display width of track' / #rhythmicDisplay[i] ) 
--- for i = 0, i+1, #rhythmicDisplay[i] (ie track 1), do
---	draw a line at 'display width of beats in bar' * (i - 1)
--- 	for j=0, j+1, #rhythmicDisplay[i][j]
---		draw a line at 'track display length' * i + 'how many divisions
+-- for i = 1, i+1, #rhythmicDisplay[i], do						-- for each track
+--	'display width of a beat' = ( 'display width of track' / #rhythmicDisplay[i] )
+--	draw a line at each i * 'display width of a beat'? or do we just do that as part of the subdivision?
+-- 	for j=0, j+1, #rhythmicDisplay[i][j]						-- for each beat
+--		'display width of a subdivision' = math.floor('display width of a beat' / rhythmicDisplay[i][j])
+--		draw a strong line for the beat, ie if j = 0, screen.level(15), else (7)
+--		for k = 0, k+1, rhythmicDisplay[i][j]					--for each subdivision
+--			draw a line at 'display width of a beat' * j) + 'display width of a subdivion' * ( k )
+--		end
+--	end
+-- end
 
 -- and then trackEvents is as before
 
