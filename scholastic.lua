@@ -49,6 +49,30 @@
 -- what does that look like?
 -- i = newlength, for i in trackDivision, trackdivision[i] = 0, and null out any that are more than that?
 
+-- don't need subdivisions in trackEvents, just a list of events, like in CG
+-- all we need do is take the cursor position and length, just as we do im CG
+-- and we take that length from the current cursor position and length
+-- the only difference is that the curson position and length are structure like Modalis rather than like CG
+
+-- so, again, all that changes is the way the cursor behaves.
+
+-- when it moves, we need to read from the rhythmic display to know how to set the cursor pos/len
+-- could this array just be a list of divisions then?
+-- track > beats > divisions
+-- #divisions (ie length of divisions) gives number of beats, so no need for an explicit value for 'beats', just adjust the length of divisions
+-- so an example divisions could be {2, 2, 5, 2}, gives quavers, and a quintuplet on beat three
+-- #divisions = 4
+-- so divide the bar into 4, and then each quarter into 2 or 5
+
+-- we read from these divisions to draw the display:
+-- 'display width of beats in bar' = ( 'display width of track' / #rhythmicDisplay[i] ) 
+-- for i = 0, i+1, #rhythmicDisplay[i] (ie track 1), do
+--	draw a line at 'display width of beats in bar' * (i - 1)
+-- 	for j=0, j+1, #rhythmicDisplay[i][j]
+--		draw a line at 'track display length' * i + 'how many divisions
+
+-- and then trackEvents is as before
+
 util = require "util"
 fileselect = require "fileselect"
 
