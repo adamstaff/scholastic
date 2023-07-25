@@ -13,56 +13,63 @@ end
 function init()
   redraw_clock_id = clock.run(redraw_clock) --add these for other clocks so we can kill them at the end
 
-  currentTrack = 1
-  curXpos=1
-  curXbeat=1
-  curXdiv=1
-  curXwidth=1
-  curXdisp = 1
-  maxXpos=1
-  displayWidthBeat=1
-
   rhythmicDisplay = {
     {2, 5, 4, 1},
     {4},
     {1, 1, 1, 3}
   }
+  currentTrack = 1
+  curXpos=1
+  curXbeat=1
+  curXdiv=1
+  curXwidth = math.floor(128 * (1 / #rhythmicDisplay[currentTrack]) * (1 / rhythmicDisplay[currentTrack][curXbeat]))
+  curXdisp = 1
+  curYPos = 0
+  displayWidthBeat=1
+  
   redraw()
 end
 
+function updateCursor() -- calculate the x position: beat + subdivision, and width of subdision
+  if curXbeat == 0 then
+    beatoffset = 0
+    subdivoffset = 0
+  else
+    beatoffset = (curXbeat - 1) / #rhythmicDisplay[currentTrack]
+    subdivoffset = (1 / #rhythmicDisplay[currentTrack]) * ((curXdiv - 1) / rhythmicDisplay[currentTrack][curXbeat])
+  end
+  curXdisp = beatoffset + subdivoffset
+  curXdisp = math.floor(curXdisp * 128)
+  if curXbeat == 0 then
+    curXwidth = 128 else
+    curXwidth = math.floor(128 * (1 / #rhythmicDisplay[currentTrack]) * (1 / rhythmicDisplay[currentTrack][curXbeat]))
+  end
+end
+
 function redraw()
-  
   screen.clear()
+  
+    -- rectangle for cursor
+  screen.level(1)
+  screen.rect(curXdisp, curYPos, curXwidth, (64 / #rhythmicDisplay))
+  screen.fill()
+  
   -- for each track
   trackHeight = 64 / #rhythmicDisplay
   for i = 1, #rhythmicDisplay do
     displayWidthBeat = math.floor( 128 / #rhythmicDisplay[i] )
-    -- for each beat
-    for j = 1, #rhythmicDisplay[i] do
+    for j = 1, #rhythmicDisplay[i] do         -- for each beat
   		displayWidthSubdiv = math.floor(displayWidthBeat / rhythmicDisplay[i][j])
-      --for each subdivision
-      for k = 1, rhythmicDisplay[i][j] do
+      for k = 1, rhythmicDisplay[i][j] do     --for each subdivision
         nowPosition = displayWidthBeat * (j - 1) + displayWidthSubdiv * (k - 1)
         nowHeight = trackHeight * (i - 1)
         screen.level(4)
-        if k == 1 then
-          screen.level(15)
-        end
+        if k == 1 then screen.level(15) end
         screen.rect(nowPosition, nowHeight, 1, trackHeight)
         screen.fill()
       end
     end
   end
-  
-  -- rectangle for cursor
-  screen.level(1)
-  
-  --calc y pos
-  curYPos = (currentTrack - 1) * (64 / #rhythmicDisplay)
-  
-  screen.rect(curXdisp, curYPos, curXwidth, (64 / #rhythmicDisplay))
-  screen.fill()
-  
   screen.update()
 end
 
@@ -70,45 +77,62 @@ function enc(e, d)
   --move cursor between tracks
   if (e == 1) then
     currentTrack = util.clamp(currentTrack + d, 1, #rhythmicDisplay)
-    curXpos = 1
-    -- calculate the cursor width
-    maxXpos = 0
-    for i=1, #rhythmicDisplay[currentTrack] do
-      maxXpos = maxXpos + rhythmicDisplay[currentTrack][i]
-    end
-    print('maxXpos is ' .. maxXpos)
-    --calculate the width of the cursor
-    for i=1, #rhythmicDisplay[currentTrack] do
-      if curXpos < rhythmicDisplay[currentTrack][i] then
-        curXwidth = math.floor( 128 / (#rhythmicDisplay[currentTrack] * rhythmicDisplay[currentTrack][i]))
-        print('curXwidth is ' .. curXwidth)
-        break
-      end
-    end
+    curXbeat = 1
+    curXdiv = 1
+    updateCursor()
+    curYPos = (currentTrack - 1) * (64 / #rhythmicDisplay)
     screenDirty = true
   end
 
   -- move cursor in time
   if (e == 2) then
     --in/decrement the position in the array
-    curXdiv = curXpos + d
-    if curXdiv > rhythmicDisplay[currentTrack][curXbeat] then
-      curXbeat = curXbeat+1
-      curXdiv = 1
+    curXdiv = curXdiv + d
+    -- moving up to the next beat
+    if curXbeat == 0 and curXdiv > 1 then
+      curXbeat = 1
+      curXdiv = 1 
+      elseif curXbeat == 0 and curXdiv < 1 then 
+        curXbeat = 0
+        curXdiv = 1 else
+      -- if we go over the beat div
+      if curXdiv > rhythmicDisplay[currentTrack][curXbeat] then -- inc beat, reset div
+        curXbeat = curXbeat + 1
+        curXdiv = 1
+        if curXbeat > #rhythmicDisplay[currentTrack] then       -- check for over
+          curXbeat = #rhythmicDisplay[currentTrack]
+          curXdiv = rhythmicDisplay[currentTrack][curXbeat]
+        end
+      end
     end
-    if curXdiv < 1 then curXbeat = curXbeat-1 end
-    if curXbeat < 1 then curXbeat = 1 end
-    if curXbeat > #rhythmicDisplay[currentTrack] then curXbeat = #rhythmicDisplay[currentTrack] end
-    -- calculate the x position: beat + subdivision
-    -- offset by beat
-    curXdisp = (128 / curXbeat)
+    if curXbeat > 0 and curXdiv < 1 then curXbeat = curXbeat-1  -- if we bottom out
+      if curXbeat == 0 then curXdiv = 1 else
+      curXdiv = rhythmicDisplay[currentTrack][curXbeat] end
+    end
+    if curXbeat < 0 then curXbeat = 0
+      curXdiv = 1 end
+
+    updateCursor() -- update cursor
     
     screenDirty = true
   end
 
-  --adjust segment Length
+  --adjust beat/subdiv amount
   if (e == 3) then
-
+    if curXbeat > 0 then        -- change subdiv
+      rhythmicDisplay[currentTrack][curXbeat] = rhythmicDisplay[currentTrack][curXbeat] + d
+      if rhythmicDisplay[currentTrack][curXbeat] < 1 then
+        rhythmicDisplay[currentTrack][curXbeat] = 1 end
+      if rhythmicDisplay[currentTrack][curXbeat] > 12 then
+        rhythmicDisplay[currentTrack][curXbeat] = 12 end
+      else                      -- change number of beats
+      if d > 0 then             -- add beat
+        table.insert(rhythmicDisplay[currentTrack], 1)
+      else                      -- remove beat
+        if #rhythmicDisplay[currentTrack] > 1 then
+        table.remove(rhythmicDisplay[currentTrack], #rhythmicDisplay[currentTrack]) end
+      end
+    end
     screenDirty = true
   end
 
