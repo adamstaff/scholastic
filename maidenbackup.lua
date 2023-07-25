@@ -13,16 +13,16 @@ end
 function init()
   redraw_clock_id = clock.run(redraw_clock) --add these for other clocks so we can kill them at the end
 
-  rhythmicDisplay = {
-    {2, 5, 4, 1},
-    {4},
-    {1, 1, 1, 3}
+  rhythmicDisplay = {   -- [1] = number of beats, then the rest is the subdivion in each beat
+    {2, 5, 4, 2},
+    {3, 1, 2, 3, 1},
+    {4, 1, 2, 3, 4}
   }
   currentTrack = 1
-  curXpos=1
   curXbeat=1
   curXdiv=1
-  curXwidth = math.floor(128 * (1 / #rhythmicDisplay[currentTrack]) * (1 / rhythmicDisplay[currentTrack][curXbeat]))
+  curXdeci = math.floor((1 / rhythmicDisplay[currentTrack][1]) * (1 / rhythmicDisplay[currentTrack][curXbeat + 1]))
+  curXwidth = 128 * curXdeci
   curXdisp = 1
   curYPos = 0
   displayWidthBeat=1
@@ -35,14 +35,14 @@ function updateCursor() -- calculate the x position: beat + subdivision, and wid
     beatoffset = 0
     subdivoffset = 0
   else
-    beatoffset = (curXbeat - 1) / #rhythmicDisplay[currentTrack]
-    subdivoffset = (1 / #rhythmicDisplay[currentTrack]) * ((curXdiv - 1) / rhythmicDisplay[currentTrack][curXbeat])
+    beatoffset = (curXbeat - 1) / rhythmicDisplay[currentTrack][1]
+    subdivoffset = (1 / rhythmicDisplay[currentTrack][1]) * ((curXdiv - 1) / rhythmicDisplay[currentTrack][curXbeat + 1])
   end
   curXdisp = beatoffset + subdivoffset
   curXdisp = math.floor(curXdisp * 128)
   if curXbeat == 0 then
     curXwidth = 128 else
-    curXwidth = math.floor(128 * (1 / #rhythmicDisplay[currentTrack]) * (1 / rhythmicDisplay[currentTrack][curXbeat]))
+    curXwidth = math.floor(128 * (1 / rhythmicDisplay[currentTrack][1]) * (1 / rhythmicDisplay[currentTrack][curXbeat + 1]))
   end
 end
 
@@ -56,11 +56,11 @@ function redraw()
   
   -- for each track
   trackHeight = 64 / #rhythmicDisplay
-  for i = 1, #rhythmicDisplay do
-    displayWidthBeat = math.floor( 128 / #rhythmicDisplay[i] )
-    for j = 1, #rhythmicDisplay[i] do         -- for each beat
-  		displayWidthSubdiv = math.floor(displayWidthBeat / rhythmicDisplay[i][j])
-      for k = 1, rhythmicDisplay[i][j] do     --for each subdivision
+  for i = 1, #rhythmicDisplay do                --for each track
+    displayWidthBeat = math.floor( 128 / rhythmicDisplay[i][1] )
+    for j = 1, rhythmicDisplay[i][1] do         -- for each beat (skip first index of rhythmicDisplay[currentTrack])
+  		displayWidthSubdiv = math.floor(displayWidthBeat / rhythmicDisplay[i][j+1])
+      for k = 1, rhythmicDisplay[i][j + 1] do     --for each subdivision
         nowPosition = displayWidthBeat * (j - 1) + displayWidthSubdiv * (k - 1)
         nowHeight = trackHeight * (i - 1)
         screen.level(4)
@@ -99,9 +99,9 @@ function enc(e, d)
       if curXdiv > rhythmicDisplay[currentTrack][curXbeat] then -- inc beat, reset div
         curXbeat = curXbeat + 1
         curXdiv = 1
-        if curXbeat > #rhythmicDisplay[currentTrack] then       -- check for over
-          curXbeat = #rhythmicDisplay[currentTrack]
-          curXdiv = rhythmicDisplay[currentTrack][curXbeat]
+        if curXbeat > rhythmicDisplay[currentTrack][1] then       -- check for over
+          curXbeat = rhythmicDisplay[currentTrack][1]
+          curXdiv = rhythmicDisplay[currentTrack][curXbeat + 1]
         end
       end
     end
@@ -129,8 +129,8 @@ function enc(e, d)
       if d > 0 then             -- add beat
         table.insert(rhythmicDisplay[currentTrack], 1)
       else                      -- remove beat
-        if #rhythmicDisplay[currentTrack] > 1 then
-        table.remove(rhythmicDisplay[currentTrack], #rhythmicDisplay[currentTrack]) end
+        if rhythmicDisplay[currentTrack][1] > 1 then
+        table.remove(rhythmicDisplay[currentTrack], rhythmicDisplay[currentTrack][1]) end
       end
     end
     screenDirty = true
