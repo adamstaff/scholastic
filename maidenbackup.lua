@@ -13,19 +13,21 @@ end
 function init()
   redraw_clock_id = clock.run(redraw_clock) --add these for other clocks so we can kill them at the end
 
-  rhythmicDisplay = {   -- [1] = number of beats, then the rest is the subdivion in each beat
-    {2, 5, 4, 2},
+  -- screen variables
+  screenWidth = 128
+  screenHeight = 64
+  
+  rhythmicDisplay = {    -- [1] = number of beats, then the rest is the subdivion in each beat
+    {2, 5, 4, 2},        -- eg this says: bar has 2 beats, first one is subdivided into 5, then 4. There is a third hidden beat divided by 2
     {3, 1, 2, 3, 1},
     {4, 1, 2, 3, 4}
   }
-  currentTrack = 1
-  curXbeat=1
-  curXdiv=1
+
+  -- declare init cursor variables
+  currentTrack,curXbeat,curXdiv,curXdisp,displayWidthBeat,curYPos=1,1,1,1,1,0
+  -- calculate some other init cursor values
   curXdeci = math.floor((1 / rhythmicDisplay[currentTrack][1]) * (1 / rhythmicDisplay[currentTrack][curXbeat + 1]))
-  curXwidth = 128 * curXdeci
-  curXdisp = 1
-  curYPos = 0
-  displayWidthBeat=1
+  curXwidth = screenWidth * curXdeci
   
   redraw()
 end
@@ -39,10 +41,10 @@ function updateCursor() -- calculate the x position: beat + subdivision, and wid
     subdivoffset = (1 / rhythmicDisplay[currentTrack][1]) * ((curXdiv - 1) / rhythmicDisplay[currentTrack][curXbeat + 1])
   end
   curXdisp = beatoffset + subdivoffset
-  curXdisp = math.floor(curXdisp * 128)
+  curXdisp = math.floor(curXdisp * screenWidth)
   if curXbeat == 0 then
-    curXwidth = 128 else
-    curXwidth = math.floor(128 * (1 / rhythmicDisplay[currentTrack][1]) * (1 / rhythmicDisplay[currentTrack][curXbeat + 1]))
+    curXwidth = screenWidth else
+    curXwidth = math.floor(screenWidth * (1 / rhythmicDisplay[currentTrack][1]) * (1 / rhythmicDisplay[currentTrack][curXbeat + 1]))
   end
 end
 
@@ -51,13 +53,13 @@ function redraw()
   
     -- rectangle for cursor
   screen.level(1)
-  screen.rect(curXdisp, curYPos, curXwidth, (64 / #rhythmicDisplay))
+  screen.rect(curXdisp, curYPos, curXwidth, (screenHeight / #rhythmicDisplay))
   screen.fill()
   
   -- for each track
-  trackHeight = 64 / #rhythmicDisplay
+  trackHeight = screenHeight / #rhythmicDisplay
   for i = 1, #rhythmicDisplay do                --for each track
-    displayWidthBeat = math.floor( 128 / rhythmicDisplay[i][1] )
+    displayWidthBeat = math.floor( screenWidth / rhythmicDisplay[i][1] )
     for j = 1, rhythmicDisplay[i][1] do         -- for each beat (skip first index of rhythmicDisplay[currentTrack])
   		displayWidthSubdiv = math.floor(displayWidthBeat / rhythmicDisplay[i][j+1])
       for k = 1, rhythmicDisplay[i][j + 1] do     --for each subdivision
@@ -80,7 +82,7 @@ function enc(e, d)
     curXbeat = 1
     curXdiv = 1
     updateCursor()
-    curYPos = (currentTrack - 1) * (64 / #rhythmicDisplay)
+    curYPos = (currentTrack - 1) * (screenHeight / #rhythmicDisplay)
     screenDirty = true
   end
 
@@ -118,20 +120,18 @@ function enc(e, d)
   end
 
   --adjust beat/subdiv amount
-  if (e == 3) then
-    if curXbeat > 0 then        -- change subdiv
-      rhythmicDisplay[currentTrack][curXbeat] = rhythmicDisplay[currentTrack][curXbeat] + d
-      if rhythmicDisplay[currentTrack][curXbeat] < 1 then
-        rhythmicDisplay[currentTrack][curXbeat] = 1 end
-      if rhythmicDisplay[currentTrack][curXbeat] > 12 then
-        rhythmicDisplay[currentTrack][curXbeat] = 12 end
-      else                      -- change number of beats
-      if d > 0 then             -- add beat
-        table.insert(rhythmicDisplay[currentTrack], 1)
-      else                      -- remove beat
-        if rhythmicDisplay[currentTrack][1] > 1 then
-        table.remove(rhythmicDisplay[currentTrack], rhythmicDisplay[currentTrack][1]) end
-      end
+  if (e == 3) and curXbeat > 0 then -- change subdiv
+    rhythmicDisplay[currentTrack][curXbeat] = rhythmicDisplay[currentTrack][curXbeat] + d
+    if rhythmicDisplay[currentTrack][curXbeat] < 1 then
+      rhythmicDisplay[currentTrack][curXbeat] = 1 end
+    if rhythmicDisplay[currentTrack][curXbeat] > 12 then
+      rhythmicDisplay[currentTrack][curXbeat] = 12 end
+    else                      -- change number of beats
+    if d > 0 then             -- add beat
+      table.insert(rhythmicDisplay[currentTrack], 1)
+    else                      -- remove beat
+      if rhythmicDisplay[currentTrack][1] > 1 then
+      table.remove(rhythmicDisplay[currentTrack], rhythmicDisplay[currentTrack][1]) end
     end
     screenDirty = true
   end
