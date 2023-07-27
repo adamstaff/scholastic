@@ -27,8 +27,9 @@ function init()
   currentTrack,curXbeat,curXdiv,curXdisp,displayWidthBeat,curYPos=1,1,1,1,1,0
   -- calculate some other init cursor values
   -- 1 / number of beat * 1 / number of subdivs in current beat
-  curXwidthD = (1 / rhythmicDisplay[currentTrack][1]) * (1 / rhythmicDisplay[currentTrack][curXbeat + 1])
+  curXwidth = (1 / rhythmicDisplay[currentTrack][1]) * (1 / rhythmicDisplay[currentTrack][curXbeat + 1])
   
+  updateCursor()
   redraw()
 end
 
@@ -50,17 +51,19 @@ end
 
 function redraw()
   screen.clear()
+  screen.line_width(1)
   
     -- rectangle for cursor
   screen.level(1)
   screen.rect(curXdisp, curYPos, curXwidth, (screenHeight / #rhythmicDisplay))
   screen.fill()
 
+  --DON'T TOUCH
   -- lines for each beat and subdivision
   -- for each track
   trackHeight = 1 / #rhythmicDisplay
   for i = 1, #rhythmicDisplay do                --for each track
-    displayWidthBeat = screenWidth / rhythmicDisplay[i][1]
+    displayWidthBeat = 1 / rhythmicDisplay[i][1]
     for j = 1, rhythmicDisplay[i][1] do         -- for each beat (skip first index of rhythmicDisplay[currentTrack])
   		displayWidthSubdiv = displayWidthBeat / rhythmicDisplay[i][j+1]
       for k = 1, rhythmicDisplay[i][j + 1] do     --for each subdivision
@@ -72,11 +75,12 @@ function redraw()
         screen.level(5)
         if k == 1 then screen.level(15) end
         screen.move(nowPosition, nowHeight)
-        screen.line_rel(0, trackHeight)
+        screen.line_rel(1, screenHeight / #rhythmicDisplay)
         screen.stroke()
       end
     end
   end
+  --DON"T TOUCH
   screen.update()
 end
 
@@ -95,29 +99,20 @@ function enc(e, d)
   if (e == 2) then
     --in/decrement the position in the array
     curXdiv = curXdiv + d
-    -- moving up to the next beat
-    if curXbeat == 0 and curXdiv > 1 then
-      curXbeat = 1
-      curXdiv = 1 
-      elseif curXbeat == 0 and curXdiv < 1 then 
-        curXbeat = 0
-        curXdiv = 1 else
-      -- if we go over the beat div
-      if curXdiv > rhythmicDisplay[currentTrack][curXbeat] then -- inc beat, reset div
-        curXbeat = curXbeat + 1
-        curXdiv = 1
-        if curXbeat > rhythmicDisplay[currentTrack][1] then       -- check for over
-          curXbeat = rhythmicDisplay[currentTrack][1]
-          curXdiv = rhythmicDisplay[currentTrack][curXbeat + 1]
-        end
+                                    --going up
+    if curXdiv > rhythmicDisplay[currentTrack][curXbeat + 1] then
+      curXbeat = curXbeat + 1
+      if curXbeat > rhythmicDisplay[currentTrack][1] then 
+        curXbeat = rhythmicDisplay[currentTrack][1]
+        curXdiv = rhythmicDisplay[currentTrack][curXbeat + 1]
+        else curXdiv = 1
       end
     end
-    if curXbeat > 0 and curXdiv < 1 then curXbeat = curXbeat-1  -- if we bottom out
-      if curXbeat == 0 then curXdiv = 1 else
-      curXdiv = rhythmicDisplay[currentTrack][curXbeat] end
+    if curXdiv < 1 then             --going down
+      curXbeat = curXbeat - 1
+      if curXbeat < 1 then curXbeat, curXdiv = 0, 1 else
+      curXdiv = rhythmicDisplay[currentTrack][curXbeat + 1] end
     end
-    if curXbeat < 0 then curXbeat = 0
-      curXdiv = 1 end
 
     updateCursor() -- update cursor
     
@@ -125,19 +120,22 @@ function enc(e, d)
   end
 
   --adjust beat/subdiv amount
-  if (e == 3) and curXbeat > 0 then -- change subdiv
-    rhythmicDisplay[currentTrack][curXbeat] = rhythmicDisplay[currentTrack][curXbeat] + d
-    if rhythmicDisplay[currentTrack][curXbeat] < 1 then
-      rhythmicDisplay[currentTrack][curXbeat] = 1 end
-    if rhythmicDisplay[currentTrack][curXbeat] > 12 then
-      rhythmicDisplay[currentTrack][curXbeat] = 12 end
-    else                      -- change number of beats
-    if d > 0 then             -- add beat
-      table.insert(rhythmicDisplay[currentTrack], 1)
-    else                      -- remove beat
-      if rhythmicDisplay[currentTrack][1] > 1 then
-      table.remove(rhythmicDisplay[currentTrack], rhythmicDisplay[currentTrack][1]) end
-    end
+  if (e == 3) then       -- change subdiv
+    -- if we're changing beats
+    if curXbeat == 0 then
+      if d > 0 then
+        if rhythmicDisplay[currentTrack][1] < 12 then
+        table.insert(rhythmicDisplay[currentTrack], 1)
+        rhythmicDisplay[currentTrack][1] = rhythmicDisplay[currentTrack][1] + 1 end
+      else rhythmicDisplay[currentTrack][1] = util.clamp(rhythmicDisplay[currentTrack][1] - 1, 1, 12)
+      end
+    -- if we're not on beats, just change the subdiv
+    else 
+      rhythmicDisplay[currentTrack][curXbeat + 1] = util.clamp(rhythmicDisplay[currentTrack][curXbeat + 1] + d, 1, 12) end
+    
+    if curXdiv > rhythmicDisplay[currentTrack][curXbeat + 1] then
+      curXdiv = rhythmicDisplay[currentTrack][curXbeat + 1] end
+    updateCursor()
     screenDirty = true
   end
 
