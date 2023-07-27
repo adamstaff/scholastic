@@ -26,8 +26,8 @@ function init()
   -- declare init cursor variables
   currentTrack,curXbeat,curXdiv,curXdisp,displayWidthBeat,curYPos=1,1,1,1,1,0
   -- calculate some other init cursor values
-  curXdeci = math.floor((1 / rhythmicDisplay[currentTrack][1]) * (1 / rhythmicDisplay[currentTrack][curXbeat + 1]))
-  curXwidth = screenWidth * curXdeci
+  -- 1 / number of beat * 1 / number of subdivs in current beat
+  curXwidthD = (1 / rhythmicDisplay[currentTrack][1]) * (1 / rhythmicDisplay[currentTrack][curXbeat + 1])
   
   redraw()
 end
@@ -55,20 +55,25 @@ function redraw()
   screen.level(1)
   screen.rect(curXdisp, curYPos, curXwidth, (screenHeight / #rhythmicDisplay))
   screen.fill()
-  
+
+  -- lines for each beat and subdivision
   -- for each track
-  trackHeight = screenHeight / #rhythmicDisplay
+  trackHeight = 1 / #rhythmicDisplay
   for i = 1, #rhythmicDisplay do                --for each track
-    displayWidthBeat = math.floor( screenWidth / rhythmicDisplay[i][1] )
+    displayWidthBeat = screenWidth / rhythmicDisplay[i][1]
     for j = 1, rhythmicDisplay[i][1] do         -- for each beat (skip first index of rhythmicDisplay[currentTrack])
-  		displayWidthSubdiv = math.floor(displayWidthBeat / rhythmicDisplay[i][j+1])
+  		displayWidthSubdiv = displayWidthBeat / rhythmicDisplay[i][j+1]
       for k = 1, rhythmicDisplay[i][j + 1] do     --for each subdivision
+        --calculate the position and height of each line
         nowPosition = displayWidthBeat * (j - 1) + displayWidthSubdiv * (k - 1)
-        nowHeight = trackHeight * (i - 1)
-        screen.level(4)
+        nowPosition = math.floor(nowPosition * screenWidth)
+        nowHeight = math.floor(trackHeight * (i - 1) * screenHeight)
+        --draw the line
+        screen.level(5)
         if k == 1 then screen.level(15) end
-        screen.rect(nowPosition, nowHeight, 1, trackHeight)
-        screen.fill()
+        screen.move(nowPosition, nowHeight)
+        screen.line_rel(0, trackHeight)
+        screen.stroke()
       end
     end
   end
