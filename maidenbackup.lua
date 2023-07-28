@@ -22,6 +22,10 @@ function init()
     {3, 1, 2, 3, 1},
     {4, 1, 2, 3, 4}
   }
+  
+  noteEvents = {           -- pairs. [track][decimal time of note]
+    {1,0.5}
+  }
 
   -- declare init cursor variables
   currentTrack,curXbeat,curXdiv,curXdisp,displayWidthBeat,curYPos=1,1,1,1,1,0
@@ -60,6 +64,7 @@ function redraw()
 
   --DON'T TOUCH
   -- lines for each beat and subdivision
+  -- rectangles for notes
   -- for each track
   trackHeight = 1 / #rhythmicDisplay
   for i = 1, #rhythmicDisplay do                --for each track
@@ -69,18 +74,27 @@ function redraw()
       for k = 1, rhythmicDisplay[i][j + 1] do     --for each subdivision
         --calculate the position and height of each line
         nowPosition = displayWidthBeat * (j - 1) + displayWidthSubdiv * (k - 1)
-        nowPosition = math.floor(nowPosition * screenWidth)
+        nowPixel = math.floor(nowPosition * screenWidth)
         nowHeight = math.floor(trackHeight * (i - 1) * screenHeight)
         --draw the line
         screen.level(5)
         if k == 1 then screen.level(15) end
-        screen.move(nowPosition, nowHeight)
+        screen.move(nowPixel, nowHeight)
         screen.line_rel(1, screenHeight / #rhythmicDisplay)
         screen.stroke()
+        -- draw notes
+        for l=1, #noteEvents do
+          if i == noteEvents[l][1] and nowPosition == noteEvents[l][2] then
+            screen.level(1)
+            screen.rect(nowPixel, nowHeight, math.floor(128 * displayWidthSubdiv), screenHeight / #rhythmicDisplay)
+            screen.fill()
+          end
+        end
       end
     end
   end
   --DON"T TOUCH
+  
   screen.update()
 end
 
@@ -139,6 +153,24 @@ function enc(e, d)
     screenDirty = true
   end
 
+end
+
+function key(k, z)
+  
+  --add/remove notes
+  if k==3 and z==1 then
+    displayWidthBeat = 1 / rhythmicDisplay[currentTrack][1]
+    displayWidthSubdiv = displayWidthBeat / rhythmicDisplay[currentTrack][curXbeat + 1]
+    nowPosition = displayWidthBeat * (curXbeat - 1) + displayWidthSubdiv * (curXdiv - 1)
+    print('cursor at: '..nowPosition)
+--[[    
+    for i=1, #noteEvents do
+      if currentTrack == noteEvents[i][1] and nowPosition == noteEvents[i][2] then
+        
+      end
+    end 
+--]]
+  end
 end
 
 function cleanup() --------------- cleanup() is automatically called on script close
