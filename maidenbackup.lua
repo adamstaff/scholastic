@@ -24,7 +24,7 @@ function init()
   }
   
   noteEvents = {           -- pairs. [track][decimal time of note]
-    {1,0.5}
+
   }
 
   -- declare init cursor variables
@@ -57,12 +57,12 @@ function redraw()
   screen.clear()
   screen.line_width(1)
   
-    -- rectangle for cursor
+    -- rectangle for cursor background
   screen.level(1)
   screen.rect(curXdisp, curYPos, curXwidth, (screenHeight / #rhythmicDisplay))
   screen.fill()
 
-  --DON'T TOUCH
+  --DON'T TOUCH -- THIS IS WORKING
   -- lines for each beat and subdivision
   -- rectangles for notes
   -- for each track
@@ -76,24 +76,29 @@ function redraw()
         nowPosition = displayWidthBeat * (j - 1) + displayWidthSubdiv * (k - 1)
         nowPixel = math.floor(nowPosition * screenWidth)
         nowHeight = math.floor(trackHeight * (i - 1) * screenHeight)
-        --draw the line
+        -- draw notes
+        for l=1, #noteEvents do
+          if i == noteEvents[l][1] and nowPosition == noteEvents[l][2] then
+            screen.level(2)
+            screen.rect(nowPixel, nowHeight, math.floor(128 * displayWidthSubdiv), screenHeight / #rhythmicDisplay)
+            screen.fill()
+          end
+        end
+        --draw the lines
         screen.level(5)
         if k == 1 then screen.level(15) end
         screen.move(nowPixel, nowHeight)
         screen.line_rel(1, screenHeight / #rhythmicDisplay)
         screen.stroke()
-        -- draw notes
-        for l=1, #noteEvents do
-          if i == noteEvents[l][1] and nowPosition == noteEvents[l][2] then
-            screen.level(1)
-            screen.rect(nowPixel, nowHeight, math.floor(128 * displayWidthSubdiv), screenHeight / #rhythmicDisplay)
-            screen.fill()
-          end
-        end
       end
     end
   end
   --DON"T TOUCH
+  
+  -- rectangle for cursor outside
+  screen.level(4)
+  screen.rect(curXdisp + 2, curYPos + 1, curXwidth - 1, (screenHeight / #rhythmicDisplay) - 2)
+  screen.stroke()
   
   screen.update()
 end
@@ -105,7 +110,7 @@ function enc(e, d)
     curXbeat = 1
     curXdiv = 1
     updateCursor()
-    curYPos = (currentTrack - 1) * (screenHeight / #rhythmicDisplay)
+    curYPos = math.floor((currentTrack - 1) * (screenHeight / #rhythmicDisplay))
     screenDirty = true
   end
 
