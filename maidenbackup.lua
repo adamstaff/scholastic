@@ -156,20 +156,28 @@ function enc(e, d)
 end
 
 function key(k, z)
-  
   --add/remove notes
   if k==3 and z==1 then
-    displayWidthBeat = 1 / rhythmicDisplay[currentTrack][1]
-    displayWidthSubdiv = displayWidthBeat / rhythmicDisplay[currentTrack][curXbeat + 1]
-    nowPosition = displayWidthBeat * (curXbeat - 1) + displayWidthSubdiv * (curXdiv - 1)
+    local foundOne = false
+    local displayWidthBeat = 1 / rhythmicDisplay[currentTrack][1]
+    local displayWidthSubdiv = displayWidthBeat / rhythmicDisplay[currentTrack][curXbeat + 1]
+    local nowPosition = displayWidthBeat * (curXbeat - 1) + displayWidthSubdiv * (curXdiv - 1)
     print('cursor at: '..nowPosition)
---[[    
-    for i=1, #noteEvents do
-      if currentTrack == noteEvents[i][1] and nowPosition == noteEvents[i][2] then
-        
+
+    if #noteEvents > 0 then --if we've got any notes at all
+      for i=1, #noteEvents do
+        if currentTrack == noteEvents[i][1] and nowPosition == noteEvents[i][2] then
+          --remove this note
+          table.remove(noteEvents[i])
+          foundOne = true
+          screenDirty = true
+        end
       end
     end 
---]]
+    if (not foundOne) then -- if we didn't delete
+      table.insert(noteEvents, 1, {currentTrack, nowPosition}) -- insert a new note
+      screenDirty = true
+    end
   end
 end
 
