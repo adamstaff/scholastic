@@ -10,6 +10,29 @@ function redraw_clock() ----- a clock that draws space
   end
 end
 
+--tick along, play events
+function ticker()
+  while isPlaying do
+    if (clockPosition >= 1) then clockPosition = 0 end  --loop clock
+--[[    for i, data in ipairs(trackEvents) do     --check if it's time for an event
+      if (data[4] ~=nil) then --if there's an event to check
+        local localTick = clockPosition - trackTiming[data[3]+1]  --offset track playhead position by track offset
+        if localTick > totalBeats then localTick = 0 - trackTiming[data[3]+1]   --check we're not out of bounds
+        else if localTick < 0 then localTick = totalBeats - trackTiming[data[3]+1] end
+        end
+        if (localTick == math.floor(totalBeats * (data[1]))) then  --finally, play an event?
+          softcut.position(data[3]+1,data[3]+1) -- put the voice playhead in the right place
+          softcut.level(data[3]+1,data[4])  --set dynamic level
+          softcut.play(data[3]+1,1) -- play
+        end
+      end
+    end
+    if clockPosition % 16 == 0 then screenDirty = true end -- redraw screen every x ticks --]]
+    clockPosition = clockPosition + tick -- move to next clock position
+    clock.sync(1/192) -- and wait
+  end
+end
+
 function init()
   redraw_clock_id = clock.run(redraw_clock) --add these for other clocks so we can kill them at the end
 
@@ -18,9 +41,10 @@ function init()
   screenHeight = 64
   
   rhythmicDisplay = {    -- [1] = number of beats, then the rest is the subdivion in each beat
-    {2, 5, 4, 2},        -- eg this says: bar has 2 beats, first one is subdivided into 5, then 4. There is a third hidden beat divided by 2
-    {3, 1, 2, 3, 1},
-    {4, 1, 2, 3, 4}
+    {4, 1, 1, 1, 1},
+    {4, 1, 1, 1, 1},
+    {4, 1, 1, 1, 1},
+    {4, 1, 1, 1, 1}
   }
   
   noteEvents = {           -- pairs. [track][decimal time of note]
@@ -29,6 +53,8 @@ function init()
 
   -- declare init cursor variables
   currentTrack,curXbeat,curXdiv,curXdisp,displayWidthBeat,curYPos=1,1,1,1,1,0
+  tick = 1 / 192
+  isPlaying = false
   -- calculate some other init cursor values
   -- 1 / number of beat * 1 / number of subdivs in current beat
   curXwidth = (1 / rhythmicDisplay[currentTrack][1]) * (1 / rhythmicDisplay[currentTrack][curXbeat + 1])
@@ -41,16 +67,13 @@ function updateCursor() -- calculate the x position: beat + subdivision, and wid
   if curXbeat == 0 then
     beatoffset = 0
     subdivoffset = 0
+    curXwidth = screenWidth
   else
     beatoffset = (curXbeat - 1) / rhythmicDisplay[currentTrack][1]
     subdivoffset = (1 / rhythmicDisplay[currentTrack][1]) * ((curXdiv - 1) / rhythmicDisplay[currentTrack][curXbeat + 1])
-  end
-  curXdisp = beatoffset + subdivoffset
-  curXdisp = math.floor(curXdisp * screenWidth)
-  if curXbeat == 0 then
-    curXwidth = screenWidth else
     curXwidth = math.floor(screenWidth * (1 / rhythmicDisplay[currentTrack][1]) * (1 / rhythmicDisplay[currentTrack][curXbeat + 1]))
   end
+  curXdisp = math.floor((beatoffset + subdivoffset) * screenWidth)
 end
 
 function redraw()
@@ -69,7 +92,7 @@ function redraw()
   trackHeight = 1 / #rhythmicDisplay
   for i = 1, #rhythmicDisplay do                --for each track
     displayWidthBeat = 1 / rhythmicDisplay[i][1]
-    for j = 1, rhythmicDisplay[i][1] do         -- for each beat (skip first index of rhythmicDisplay[currentTrack])
+    for j = 1, rhythmicDisplay[i][1]  do         -- for each beat (skip first index of rhythmicDisplay[currentTrack])
   		displayWidthSubdiv = displayWidthBeat / rhythmicDisplay[i][j+1]
       for k = 1, rhythmicDisplay[i][j + 1] do     --for each subdivision
         --calculate the position and height of each line
@@ -84,12 +107,18 @@ function redraw()
             screen.fill()
           end
         end
-        --draw the lines
+        --draw the lines and cursor
         screen.level(5)
         if k == 1 then screen.level(15) end
-        screen.move(nowPixel, nowHeight)
-        screen.line_rel(1, screenHeight / #rhythmicDisplay)
-        screen.stroke()
+        if clockPosition >= nowPosition and clockPosition < nowPosition + displayWidthSubdiv then
+            screen.level(2)
+            screen.rect(nowPixel, nowHeight, math.floor(128 * displayWidthSubdiv), screenHeight / #rhythmicDisplay)
+            screen.fill()
+        else
+          screen.move(nowPixel, nowHeight)
+          screen.line_rel(1, screenHeight / #rhythmicDisplay)
+          screen.stroke()
+        end
       end
     end
   end
@@ -184,6 +213,16 @@ function key(k, z)
       screenDirty = true
     end
   end
+
+  if (k == 2 and z == 1) then
+    if isPlaying then
+      isPlaying = false
+      clockPosition = 0
+    else
+      isPlaying = true
+      clock.run(ticker) -- need to call this every time? hmm
+    end
+  end  
 end
 
 function cleanup() --------------- cleanup() is automatically called on script close
