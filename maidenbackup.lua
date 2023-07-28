@@ -13,7 +13,8 @@ end
 --tick along, play events
 function ticker()
   while isPlaying do
-    if (clockPosition >= 1) then clockPosition = 0 end  --loop clock
+    if (clockPosition >= 1) then clockPosition = 0 
+      print('----')end  --loop clock
 --[[    for i, data in ipairs(trackEvents) do     --check if it's time for an event
       if (data[4] ~=nil) then --if there's an event to check
         local localTick = clockPosition - trackTiming[data[3]+1]  --offset track playhead position by track offset
@@ -27,28 +28,34 @@ function ticker()
         end
       end
     end
-    if clockPosition % 16 == 0 then screenDirty = true end -- redraw screen every x ticks --]]
+--]]
+    for i = 1, #noteEvents do
+      if math.floor(clockPosition*192) == math.floor(noteEvents[i][2] * 192) then
+        print('bing on track :'..noteEvents[i][1])
+      end
+    end
     clockPosition = clockPosition + tick -- move to next clock position
-    clock.sync(1/192) -- and wait
+    clock.sync(1/(192/4)) -- and wait
   end
 end
 
 function init()
   redraw_clock_id = clock.run(redraw_clock) --add these for other clocks so we can kill them at the end
+  clockPosition = 0
 
   -- screen variables
   screenWidth = 128
   screenHeight = 64
   
   rhythmicDisplay = {    -- [1] = number of beats, then the rest is the subdivion in each beat
-    {4, 1, 1, 1, 1},
-    {4, 1, 1, 1, 1},
-    {4, 1, 1, 1, 1},
+    {3, 1, 1, 1, 1},
+    {4, 2, 2, 2, 2},
+    {2, 5, 5, 1, 1},
     {4, 1, 1, 1, 1}
   }
   
   noteEvents = {           -- pairs. [track][decimal time of note]
-
+    
   }
 
   -- declare init cursor variables
@@ -81,9 +88,9 @@ function redraw()
   screen.line_width(1)
   
     -- rectangle for cursor background
-  screen.level(1)
+--[[  screen.level(1)
   screen.rect(curXdisp, curYPos, curXwidth, (screenHeight / #rhythmicDisplay))
-  screen.fill()
+  screen.fill()--]]
 
   --DON'T TOUCH -- THIS IS WORKING
   -- lines for each beat and subdivision
@@ -102,23 +109,28 @@ function redraw()
         -- draw notes
         for l=1, #noteEvents do
           if i == noteEvents[l][1] and nowPosition == noteEvents[l][2] then
-            screen.level(2)
+            screen.level(4)
             screen.rect(nowPixel, nowHeight, math.floor(128 * displayWidthSubdiv), screenHeight / #rhythmicDisplay)
             screen.fill()
           end
         end
-        --draw the lines and cursor
+        --draw the playback
+        if isPlaying and clockPosition >= nowPosition and clockPosition < nowPosition + displayWidthSubdiv then
+          screen.level(1)
+          for m=1, # noteEvents do
+            if i == noteEvents[m][1] and clockPosition >= noteEvents[m][2] and clockPosition < noteEvents[m][2] + displayWidthSubdiv then
+              screen.level(12)
+            end
+          end
+          screen.rect(nowPixel, nowHeight, math.floor(128 * displayWidthSubdiv), screenHeight / #rhythmicDisplay)
+          screen.fill()
+        end
+        --draw the lines
         screen.level(5)
         if k == 1 then screen.level(15) end
-        if clockPosition >= nowPosition and clockPosition < nowPosition + displayWidthSubdiv then
-            screen.level(2)
-            screen.rect(nowPixel, nowHeight, math.floor(128 * displayWidthSubdiv), screenHeight / #rhythmicDisplay)
-            screen.fill()
-        else
-          screen.move(nowPixel, nowHeight)
-          screen.line_rel(1, screenHeight / #rhythmicDisplay)
-          screen.stroke()
-        end
+        screen.move(nowPixel, nowHeight)
+        screen.line_rel(1, screenHeight / #rhythmicDisplay)
+        screen.stroke()
       end
     end
   end
@@ -221,6 +233,7 @@ function key(k, z)
     else
       isPlaying = true
       clock.run(ticker) -- need to call this every time? hmm
+      screenDirty = true
     end
   end  
 end
