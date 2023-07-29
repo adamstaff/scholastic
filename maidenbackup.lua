@@ -1,4 +1,5 @@
 util = require "util"
+engine.name = 'KarplusRings'
 
 function redraw_clock() ----- a clock that draws space
   while true do ------------- "while true do" means "do this forever"
@@ -15,10 +16,10 @@ function ticker()
   while isPlaying do
     if (clockPosition >= 1) then clockPosition = 0 end  --loop clock
       
-    for i = 1, #noteEvents do                       -- play notes
+    for i = 1, #noteEvents do                           -- play notes
       if noteEvents[i][2] then
         if math.floor(clockPosition*192) == math.floor(noteEvents[i][2] * 192) then
-          print('bing on track :'..noteEvents[i][1])
+          engine.hz(noteEvents[i][1] * 55)
         end
       end
     end
@@ -30,6 +31,10 @@ end
 function init()
   redraw_clock_id = clock.run(redraw_clock) --add these for other clocks so we can kill them at the end
   clockPosition = 0
+  
+  --engine stuff
+  engine.decay(0.9)
+  engine.coef(0.1)
 
   -- screen variables
   screenWidth = 128
@@ -129,7 +134,7 @@ function redraw()
   --DON"T TOUCH
   
   -- rectangle for cursor outside
-  screen.level(1)
+  screen.level(15)
   screen.rect(curXdisp + 2, curYPos + 1, curXwidth - 1, (screenHeight / #rhythmicDisplay) - 1)
   screen.stroke()
   
@@ -219,7 +224,6 @@ function key(k, z)
       for i=1, #noteEvents do
         if currentTrack == noteEvents[i][1] and nowPosition == noteEvents[i][2] then
           --remove this note
-          print('removing note index '..i..': '..noteEvents[i][1]..', '..noteEvents[i][2])
           table.remove(noteEvents[i])
           foundOne = true
           screenDirty = true
@@ -227,7 +231,6 @@ function key(k, z)
       end
     end 
     if (not foundOne) then -- if we didn't delete
-      print('adding a note '..currentTrack..', '..nowPosition)
       table.insert(noteEvents, 1, {currentTrack, nowPosition}) -- insert a new note
       screenDirty = true
     end
