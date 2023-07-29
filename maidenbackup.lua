@@ -13,29 +13,17 @@ end
 --tick along, play events
 function ticker()
   while isPlaying do
-    if (clockPosition >= 1) then clockPosition = 0 
-      print('----')end  --loop clock
---[[    for i, data in ipairs(trackEvents) do     --check if it's time for an event
-      if (data[4] ~=nil) then --if there's an event to check
-        local localTick = clockPosition - trackTiming[data[3]+1]  --offset track playhead position by track offset
-        if localTick > totalBeats then localTick = 0 - trackTiming[data[3]+1]   --check we're not out of bounds
-        else if localTick < 0 then localTick = totalBeats - trackTiming[data[3]+1] end
-        end
-        if (localTick == math.floor(totalBeats * (data[1]))) then  --finally, play an event?
-          softcut.position(data[3]+1,data[3]+1) -- put the voice playhead in the right place
-          softcut.level(data[3]+1,data[4])  --set dynamic level
-          softcut.play(data[3]+1,1) -- play
+    if (clockPosition >= 1) then clockPosition = 0 end  --loop clock
+      
+    for i = 1, #noteEvents do                       -- play notes
+      if noteEvents[i][2] then
+        if math.floor(clockPosition*192) == math.floor(noteEvents[i][2] * 192) then
+          print('bing on track :'..noteEvents[i][1])
         end
       end
     end
---]]
-    for i = 1, #noteEvents do
-      if math.floor(clockPosition*192) == math.floor(noteEvents[i][2] * 192) then
-        print('bing on track :'..noteEvents[i][1])
-      end
-    end
-    clockPosition = clockPosition + tick -- move to next clock position
-    clock.sync(1/(192/4)) -- and wait
+    clockPosition = clockPosition + tick            -- move to next clock position
+    clock.sync(1/48)                           -- and wait
   end
 end
 
@@ -97,9 +85,9 @@ function redraw()
   -- rectangles for notes
   -- for each track
   trackHeight = 1 / #rhythmicDisplay
-  for i = 1, #rhythmicDisplay do                --for each track
+  for i = 1, #rhythmicDisplay do                  --for each track
     displayWidthBeat = 1 / rhythmicDisplay[i][1]
-    for j = 1, rhythmicDisplay[i][1]  do         -- for each beat (skip first index of rhythmicDisplay[currentTrack])
+    for j = 1, rhythmicDisplay[i][1]  do          -- for each beat (skip first index of rhythmicDisplay[currentTrack])
   		displayWidthSubdiv = displayWidthBeat / rhythmicDisplay[i][j+1]
       for k = 1, rhythmicDisplay[i][j + 1] do     --for each subdivision
         --calculate the position and height of each line
@@ -117,9 +105,13 @@ function redraw()
         --draw the playback
         if isPlaying and clockPosition >= nowPosition and clockPosition < nowPosition + displayWidthSubdiv then
           screen.level(1)
-          for m=1, # noteEvents do
-            if i == noteEvents[m][1] and clockPosition >= noteEvents[m][2] and clockPosition < noteEvents[m][2] + displayWidthSubdiv then
-              screen.level(12)
+          if #noteEvents > 0 then
+            for m=1, #noteEvents do
+              if noteEvents[m][2] then
+                if i == noteEvents[m][1] and clockPosition >= noteEvents[m][2] and clockPosition < noteEvents[m][2] + displayWidthSubdiv then
+                  screen.level(12)
+                end
+              end
             end
           end
           screen.rect(nowPixel, nowHeight, math.floor(128 * displayWidthSubdiv), screenHeight / #rhythmicDisplay)
@@ -137,8 +129,8 @@ function redraw()
   --DON"T TOUCH
   
   -- rectangle for cursor outside
-  screen.level(4)
-  screen.rect(curXdisp + 2, curYPos + 1, curXwidth - 1, (screenHeight / #rhythmicDisplay) - 2)
+  screen.level(1)
+  screen.rect(curXdisp + 2, curYPos + 1, curXwidth - 1, (screenHeight / #rhythmicDisplay) - 1)
   screen.stroke()
   
   screen.update()
@@ -147,9 +139,23 @@ end
 function enc(e, d)
   --move cursor between tracks
   if (e == 1) then
-    currentTrack = util.clamp(currentTrack + d, 1, #rhythmicDisplay)
-    curXbeat = 1
-    curXdiv = 1
+    currentTrack = util.clamp(currentTrack + d, 1, #rhythmicDisplay)  --change track
+    curXdisp = curXdisp / 192
+    -- how wide is a beat, decimal
+    local displayWidthBeat = 1 / rhythmicDisplay[currentTrack][1]
+    -- for each beat
+    for i=1, rhythmicDisplay[currentTrack][1] do
+      --how wide is subdiv in this beat
+      local displayWidthSubdiv = displayWidthBeat / rhythmicDisplay[currentTrack][i+1]
+      local dwb = displayWidthBeat * (i - 1)
+      for j=1, rhythmicDisplay[currentTrack][i] do
+        -- if cursor pos is within this subdiv
+        if curXdisp >= dwb + displayWidthSubdiv * (j - 1) and curXdisp < dwb + displayWidthSubdiv * (j) then
+          curXbeat = i
+          curXdiv = j
+        end
+      end
+    end
     updateCursor()
     curYPos = math.floor((currentTrack - 1) * (screenHeight / #rhythmicDisplay))
     screenDirty = true
@@ -208,12 +214,12 @@ function key(k, z)
     local displayWidthBeat = 1 / rhythmicDisplay[currentTrack][1]
     local displayWidthSubdiv = displayWidthBeat / rhythmicDisplay[currentTrack][curXbeat + 1]
     local nowPosition = displayWidthBeat * (curXbeat - 1) + displayWidthSubdiv * (curXdiv - 1)
-    print('cursor at: '..nowPosition)
 
     if #noteEvents > 0 then --if we've got any notes at all
       for i=1, #noteEvents do
         if currentTrack == noteEvents[i][1] and nowPosition == noteEvents[i][2] then
           --remove this note
+          print('removing note index '..i..': '..noteEvents[i][1]..', '..noteEvents[i][2])
           table.remove(noteEvents[i])
           foundOne = true
           screenDirty = true
@@ -221,6 +227,7 @@ function key(k, z)
       end
     end 
     if (not foundOne) then -- if we didn't delete
+      print('adding a note '..currentTrack..', '..nowPosition)
       table.insert(noteEvents, 1, {currentTrack, nowPosition}) -- insert a new note
       screenDirty = true
     end
