@@ -1,12 +1,20 @@
 util = require "util"
 engine.name = 'KarplusRings'
 
+local grid = util.file_exists(_path.code.."midigrid") and include "midigrid/lib/mg_128" or grid
+g = grid.connect()
+
+
 function redraw_clock() ----- a clock that draws space
   while true do ------------- "while true do" means "do this forever"
     clock.sleep(1/15) ------- pause for a fifteenth of a second (aka 15fps)
-    if screenDirty then ---- only if something changed
+    if screenDirty or isPlaying then ---- only if something changed
       redraw() -------------- redraw space
-      screen_dirty = false -- and everything is clean again
+      screenDirty = false -- and everything is clean again
+    end
+    if gridDirty then
+      redrawGrid()
+      gridDirty = false
     end
   end
 end
@@ -31,6 +39,8 @@ end
 function init()
   redraw_clock_id = clock.run(redraw_clock) --add these for other clocks so we can kill them at the end
   clockPosition = 0
+  screenDirty = true
+  gridDirty = true
   
   --engine stuff
   engine.decay(0.9)
@@ -58,6 +68,10 @@ function init()
   -- calculate some other init cursor values
   -- 1 / number of beat * 1 / number of subdivs in current beat
   curXwidth = (1 / rhythmicDisplay[currentTrack][1]) * (1 / rhythmicDisplay[currentTrack][curXbeat + 1])
+  
+  for i =1 , 3 do
+    norns.enc.sens(i, 4)
+  end
   
   updateCursor()
   redraw()
@@ -124,10 +138,13 @@ function redraw()
         end
         --draw the lines
         screen.level(5)
-        if k == 1 then screen.level(15) end
+        local gridlevel = 8
+        if k == 1 then screen.level(15)
+          gridlevel = 15 end
         screen.move(nowPixel, nowHeight)
         screen.line_rel(1, screenHeight / #rhythmicDisplay)
         screen.stroke()
+
       end
     end
   end
@@ -139,31 +156,68 @@ function redraw()
   screen.stroke()
   
   screen.update()
+
+end
+
+function redrawGrid()
+--[[  print('drawing grid')
+  local grid_h = g.rows
+  print()
+  g:all(0)
+  -- draw grid
+--  if grid_h == 16 then
+    for r=1, 16 do
+      for i=1, #rhythmicDisplay do -- for each track
+        for j=1, rhythmicDisplay[i][1] do --for each beat
+          local beatpos = 1 + math.floor(j / rhythmicDisplay[i][1])
+          for k=1, rhythmicDisplay[i][j+1] do
+            divpos = math.floor(k / rhythmicDisplay[i][j])
+            print('checking at '..16 * beatpos * divpos)
+            if r == 16 * beatpos * divpos then
+              local glevel = 3 else glevel = 0 
+            end
+            print('drawing a light at '..r..', '..k)
+            g.level(r,k,glevel)
+          end
+        end
+      end
+--    end
+  end
+  g:refresh()--]]
 end
 
 function enc(e, d)
   --move cursor between tracks
   if (e == 1) then
+    local foundit = false
+    curXdisp = curXdisp / 128
+    local displayWidthBeat = 1 / rhythmicDisplay[currentTrack][1]
+    local dws = displayWidthBeat / rhythmicDisplay[currentTrack][curXbeat+1]
+    local xcenter = curXdisp + dws * 0.5
     currentTrack = util.clamp(currentTrack + d, 1, #rhythmicDisplay)  --change track
-    curXdisp = curXdisp / 192
     -- how wide is a beat, decimal
     local displayWidthBeat = 1 / rhythmicDisplay[currentTrack][1]
     -- for each beat
     for i=1, rhythmicDisplay[currentTrack][1] do
       --how wide is subdiv in this beat
-      local displayWidthSubdiv = displayWidthBeat / rhythmicDisplay[currentTrack][i+1]
+      local dws = displayWidthBeat / rhythmicDisplay[currentTrack][i+1]
       local dwb = displayWidthBeat * (i - 1)
-      for j=1, rhythmicDisplay[currentTrack][i] do
+      for j=1, rhythmicDisplay[currentTrack][i + 1] do
         -- if cursor pos is within this subdiv
-        if curXdisp >= dwb + displayWidthSubdiv * (j - 1) and curXdisp < dwb + displayWidthSubdiv * (j) then
+        if xcenter >= dwb + dws * (j - 1) and xcenter < dwb + dws * (j) then
           curXbeat = i
           curXdiv = j
+          foundit = true
+          break
         end
+        if foundit then break end
       end
+      if foundit then break end
     end
     updateCursor()
     curYPos = math.floor((currentTrack - 1) * (screenHeight / #rhythmicDisplay))
     screenDirty = true
+    gridDirty= true
   end
 
   -- move cursor in time
@@ -188,10 +242,11 @@ function enc(e, d)
     updateCursor() -- update cursor
     
     screenDirty = true
+    gridDirty= true
   end
 
   --adjust beat/subdiv amount
-  if (e == 3) then       -- change subdiv
+  if (e == 3) then
     -- if we're changing beats
     if curXbeat == 0 then
       if d > 0 then
@@ -208,6 +263,7 @@ function enc(e, d)
       curXdiv = rhythmicDisplay[currentTrack][curXbeat + 1] end
     updateCursor()
     screenDirty = true
+    gridDirty= true
   end
 
 end
@@ -227,12 +283,14 @@ function key(k, z)
           table.remove(noteEvents[i])
           foundOne = true
           screenDirty = true
+          gridDirty= true
         end
       end
     end 
     if (not foundOne) then -- if we didn't delete
       table.insert(noteEvents, 1, {currentTrack, nowPosition}) -- insert a new note
       screenDirty = true
+      gridDirty= true
     end
   end
 
@@ -240,10 +298,13 @@ function key(k, z)
     if isPlaying then
       isPlaying = false
       clockPosition = 0
+      screenDirty = true
+      gridDirty= true
     else
       isPlaying = true
       clock.run(ticker) -- need to call this every time? hmm
       screenDirty = true
+      gridDirty= true
     end
   end  
 end
