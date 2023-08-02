@@ -24,7 +24,7 @@ function ticker()
   while isPlaying do
     if (clockPosition >= 1) then clockPosition = 0 end  --loop clock
       
-    for i = 1, #noteEvents do                           -- play notes
+    for i = 1, tracksAmount do                           -- play notes
       if noteEvents[i][3] then
         if math.floor(clockPosition*192) == math.floor(noteEvents[i][2] * 192) then
           engine.hz(noteEvents[i][1] * 55)
