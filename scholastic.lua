@@ -1,622 +1,397 @@
 -- # scholastic
--- A norns script that borrows ideas from Modalics's Beat Scholar
--- https://www.modalics.com/beatscholar
-
--- E1 - Select track 
+-- A norns script that borrows
+-- ideas from Modalics's Beat 
+-- Scholar:
+-- https://www.modalics.com/
+-- beatscholar
+-- 
+-- E1 - Select track
+-- - Scroll to track 0 to change 
+-- - number of tracks with E3
 -- E2 - Select position
--- E3 - Change division
-
--- K1 (long)-
--- K2 - Randomise (??)
+-- - Scroll to beat 0 to change 
+-- - number of beats with E3
+-- E3 - -+ tracks/beat/division
+-- 
+-- K1 (long) -
+-- K2 - Play/Stop
 -- K3 - Insert / remove a note
 
--- Far left is global settings
--- Use E3 here to change the number of subdivisions of a track
-
--- Then inside each subdivision, use E3 to subdivide further
-
--- Use K3 to add and remove notes at the cursor position, hold to make a selection inside which to add-remove notes quickly
-
--- Params for changing number of tracks, choosing samples, etc.
---------
-
--- new array structure, defines rhythmic display for entire session:
--- doesn't define anything about the events themselves, just about how we're displaying everything
--- therefore can refactor most of CG note position structure and playback system
--- just refactor the display stuff
-
--- rhythmDisplay{
--- track{
--- beatsubdivisions{
--- }}}
---
--- ie rhythmDisplay{
--- track 1:	{2, 2, 5, 2},		quavers, with a quint
--- track 2:	{4, 4, 4, 4},		16ths
--- track 3:	{1, 1, 1, 1, 1, 6},	6 beats, one of which is a sextuple
--- track 4:	{7}			7:4
--- }
-
--- redraw control cursor to follow track rhythm structure
--- redraw playback cursor to follow track rhythmic structure
--- factor all that by reading the lengths of the insides of rhythmDisplay
--- is if track [1] { trackdivision{}.length } = 4, you need to split the track into four beats
--- then if track [1] trackdision [1] beatsubdivision[1].length = 4, you need to split the first beat of track 1 into four subbeats
--- and if track [1] trackdivision [1] beatsubdivision[1] hasNote = true, you need to draw that there's a note there, 
--- and play it when the timing matches, this can also be stores in track/division/subdivision/noteposition
--- so actually playback can be stored here:
--- the playback head reads rhythms[1][1][1][hasNote}, and if true, rhythms[1][1][1][noteposition] to see if it matches the clock
--- ie at each tick, check the array for any notepositions that match the clock position
--- as you already do with CG
-
--- turning E3 on track header
--- increase / decrease trackDivision length
--- what does that look like?
--- i = newlength, for i in trackDivision, trackdivision[i] = 0, and null out any that are more than that?
-
--- don't need subdivisions in trackEvents, just a list of events, like in CG
--- all we need do is take the cursor position and length, just as we do im CG
--- and we take that length from the current cursor position and length
--- the only difference is that the curson position and length are structure like Modalis rather than like CG
-
--- so, again, all that changes is the way the cursor behaves.
-
--- when it moves, we need to read from the rhythmic display to know how to set the cursor pos/len
--- could this array just be a list of divisions then?
--- track > beats > divisions
--- #divisions (ie length of divisions) gives number of beats, so no need for an explicit value for 'beats', just adjust the length of divisions
--- so an example divisions could be {2, 2, 5, 2}, gives quavers, and a quintuplet on beat three
--- #divisions = 4
--- so divide the bar into 4, and then each quarter into 2 or 5
-
--- we read from these divisions to draw the display:
--- for i = 1, i+1, #rhythmicDisplay[i], do						-- for each track
---	'display width of a beat' = ( 'display width of track' / #rhythmicDisplay[i] )
---	draw a line at each i * 'display width of a beat'? or do we just do that as part of the subdivision?
--- 	for j=0, j+1, #rhythmicDisplay[i][j]						-- for each beat
---		'display width of a subdivision' = math.floor('display width of a beat' / rhythmicDisplay[i][j])
---		draw a strong line for the beat, ie if j = 0, screen.level(15), else (7)
---		for k = 0, k+1, rhythmicDisplay[i][j]					--for each subdivision
---			draw a line at 'display width of a beat' * j) + 'display width of a subdivion' * ( k )
---		end
---	end
--- end
-
--- and then trackEvents is as before
-
 util = require "util"
-fileselect = require "fileselect"
+engine.name = 'PolyPerc'
 
--- pass softcut sample values to an array for display
-function copy_samples(ch, start, interval, samples)
-  print("rendering a single track samples for track " .. currentTrack + 1)
-  for i = 1, editArea.width, 1 do
-    waveform.samples[i + currentTrack * editArea.width] = samples[i]
+local grid = util.file_exists(_path.code.."midigrid") and include "midigrid/lib/mg_128" or grid
+g = grid.connect()
+
+
+function redraw_clock() ----- a clock that draws space
+  while true do ------------- "while true do" means "do this forever"
+    clock.sleep(1/15) ------- pause for a fifteenth of a second (aka 15fps)
+    if screenDirty or isPlaying then ---- only if something changed
+      redraw() -------------- redraw space
+      screenDirty = false -- and everything is clean again
+    end
+    if gridDirty then
+      redrawGrid()
+      gridDirty = false
+    end
   end
-  print("done rendering waveforms")
-  screenDirty = true
-  waveform.isLoaded[currentTrack + 1] = true
-end
-
---todo: add this functionality to params - ie 'save session'
-function loadPattern()
-  trackEvents = tab.load(_path.data.."/scholastic/beat01.txt")
-end
-function savePattern()
-  tab.save(trackEvents,_path.data.."/scholastic/beat01.txt")
 end
 
 --tick along, play events
 function ticker()
   while isPlaying do
-    if (clockPosition > totalBeats) then clockPosition = 0 end  --loop clock
-    for i, data in ipairs(trackEvents) do     --check if it's time for an event
-      if (data[4] ~=nil) then --if there's an event to check
-        local localTick = clockPosition - trackTiming[data[3]+1]  --offset track playhead position by track offset
-        if localTick > totalBeats then localTick = 0 - trackTiming[data[3]+1]   --check we're not out of bounds
-        else if localTick < 0 then localTick = totalBeats - trackTiming[data[3]+1] end
-        end
-        if (localTick == math.floor(totalBeats * (data[1]))) then  --finally, play an event?
-          softcut.position(data[3]+1,data[3]+1) -- put the voice playhead in the right place
-          softcut.level(data[3]+1,data[4])  --set dynamic level
-          softcut.play(data[3]+1,1) -- play
+    if (clockPosition >= 1) then clockPosition = 0 end  --loop clock
+      
+    for i = 1, #noteEvents do                           -- play notes
+      if noteEvents[i][3] and noteEvents[i][1] <= tracksAmount then
+        if math.floor(clockPosition*192) == math.floor(noteEvents[i][2] * 192) then
+          engine.hz(noteEvents[i][1] * 55)
         end
       end
     end
-    if clockPosition % 16 == 0 then screenDirty = true end -- redraw screen every x ticks
-    clockPosition = clockPosition + tick -- move to next clock position
-    clock.sync(1/192) -- and wait
-  end
-end
-
-function redraw_clock() ----- a clock that draws space
-  while true do ------------- "while true do" means "do this forever"
-    clock.sleep(1/15) ------- pause for a fifteenth of a second (aka 15fps)
-    if screenDirty and not weLoading then ---- only if something changed
-      redraw() -------------- redraw space
-      screen_dirty = false -- and everything is clean again
-    end
+    clockPosition = clockPosition + tick            -- move to next clock position
+    clock.sync(1/48)                           -- and wait
   end
 end
 
 function init()
   redraw_clock_id = clock.run(redraw_clock) --add these for other clocks so we can kill them at the end
+  clockPosition = 0
+  screenDirty = true
+  gridDirty = true
+  
+  --engine stuff
+  engine.amp(1)
 
-  editArea = {width=120, height=56, border=4} -- the overall draw window size. Should not exceed 128 x 64!
+  -- screen variables
+  screenWidth = 128
+  screenHeight = 64
+  
+  rhythmicDisplay = {    -- [1] = number of beats, then the rest is the subdivion in each beat
+    {3, 1, 1, 1, 1},
+    {4, 2, 2, 2, 2},
+    {2, 5, 5, 1, 1},
+    {4, 1, 1, 1, 1},
+    {4, 1, 1, 1, 1},
+    {4, 1, 1, 1, 1},
+    {4, 1, 1, 1, 1},
+    {4, 1, 1, 1, 1}
+  }
+  
+  tracksAmount = 4
+  
+  noteEvents = {           -- pairs. [track][decimal time of note]
+    {}
+  }
 
+  -- declare init cursor variables
+  currentTrack,curXbeat,curXdiv,curXdisp,displayWidthBeat,curYPos=1,1,1,1,1,0
+  tick = 1 / 192
+  isPlaying = false
+  -- calculate some other init cursor values
+  -- 1 / number of beat * 1 / number of subdivs in current beat
+  curXwidth = (1 / rhythmicDisplay[currentTrack][1]) * (1 / rhythmicDisplay[currentTrack][curXbeat + 1])
+  
+  for i =1 , 3 do
+    norns.enc.sens(i, 4)
+  end
+  
   --params
-  tracksAmount = 0 -- number of tracks to play
-  beatsAmount = 0 -- number of beats to sequence
-  totalBeats = 0 -- number of ticks for the sequencer clock
-  -- start params
   params:add_separator("Scholastic")
   params:add_number("tracksAmount", "Number of Tracks", 1, 8, 4)
-  params:set_action("tracksAmount",   function tracksAmount_update(x)
-    tracksAmount = x
-    editArea.trackHeight = editArea.height / tracksAmount
-  end)
-  params:add_number("beatsAmount", "Number of Beats", 1, 32, 8)
-  params:set_action("beatsAmount", function(x)
-      beatsAmount = x
-      totalBeats = 192 * beatsAmount
-    end)
-  params:bang() -- set defaults using above params
+  params:set_action("tracksAmount", function(x) tracksAmount = x end)
+    
+    -- here, we set our PSET callbacks:
+  params.action_write = function(filename,name,number)
+    os.execute("mkdir -p "..norns.state.data.."/"..number.."/")
+    tab.save(rhythmicDisplay,norns.state.data.."/"..number.."/display.data")
+    tab.save(noteEvents,norns.state.data.."/"..number.."/notes.data")
+  end
+  params.action_read = function(filename,silent,number)
+    print("finished reading '"..filename.."'", number)
+    note_data = tab.load(norns.state.data.."/"..number.."/display.data")
+    rhythmicDisplay = note_data -- send this restored table to the sequins
+    note_data = tab.load(norns.state.data.."/"..number.."/notes.data")
+    noteEvents = note_data -- send this restored table to the sequins
+  end
+  params.action_delete = function(filename,name,number)
+    print("finished deleting '"..filename, number)
+    norns.system_cmd("rm -r "..norns.state.data.."/"..number.."/")
+  end
+  params:bang()
   --end params
-
-  currentTrack = 0
-  resolutions = {1,2,3,4,6,8,12,16,24,32,48,64,96,128,192} -- index to read from resolutions, i.e. resolutions[segmentLength]
-  beatCursor = 1 -- initial x position of cursor
-
-  trackEvents = {} -- structure: [position, length, track, dynamic, file] 
-  currentDynamic = 1.0 -- initial dynamic for adding events
-
-  --drawing stuff
-  editArea.trackHeight = editArea.height / tracksAmount -- is this redunant because of params?
-  heldKeys = {false, false, false} -- are we holding any keys?
-  nowPosition = {-1, -1} -- for storing where the cursor is
-  isPlaying = false -- are we playing right now?
-  weMoving = false -- are we moving an event right now?
-  weMoved = false -- did we move an event while moving the cusor?
-  movingEvents = {} -- list of events we're moving right now
-  weFilling = false -- are we filling an area with events?
-  fillBounds = {nil, nil} -- bounds for filling: start, end
-  weLoading = false -- stops the UI from being drawn when loading a file
-  theClock = clock.run(ticker) -- sequencer clock
-  clockPosition = 0 -- sequencer position right now. Updated by function 'ticker'
-  tick = 1 -- how much to increment each tick. Guess it could be used for double time?
-  trackTiming = {}  -- offset for entire track +- in 192ths
-  for i=1, 8, 1 do trackTiming[i] = 0 end -- programmatically fill trackTiming
-  sampleView = false -- are we looking at samples?
-  softcut.event_render(copy_samples) -- what to do when we request waveform samples from softcut
-  waveform = {} -- waveform information, used when loading a file
-  waveform.isLoaded = {}
-  waveform.samples = {}
-  waveform.channels = {}
-  waveform.length = {}
-  waveform.rate = {}
-  for i=1, 8, 1 do
-    waveform.isLoaded[i] = false 
-    --waveform.samples[i] = {}
-    --waveform.channels[i] = 0
-    --waveform.length[i] = 0
-    --waveform.rate[i] = 0
-  end
-
-  file = {} --add samples: could be used to load default samples
   
-  -- start softcut
-  softcut.buffer_clear()
-  -- read file into buffer
-  -- buffer_read_mono (file, start_src, start_dst, dur, ch_src, ch_dst)
-  for i=1, 8, 1 do
-    --local ch, length, rate = audio.file_info(file[i])
-    --local lengthInS = length * (1 / rate)
-    --if lengthInS > 1 then lengthInS = 1 end
-    --waveform.length[i] = lengthInS
-    --load file into buffer
-    --softcut.buffer_read_mono(file[i],0,i,waveform.length[i],1,1)
-    print("setting up softcut voice "..i)
-    -- enable voices
-    softcut.enable(i,1)
-    -- set voices to buffer 1
-    softcut.buffer(i,1)
-    -- set voices level to 1.0
-    softcut.level(i,1.0)
-    -- voices disable loop
-    softcut.loop(i,0)
-    softcut.loop_start(i,i)
-    softcut.loop_end(i,i+0.99)
-    softcut.position(i,i)
-    -- set voices rate to 1.0 and no fade
-    softcut.rate(i,1.0)
-    softcut.fade_time(i,0)
-    -- disable voices play
-    softcut.play(i,0)
-  end
-  --softcut.render_buffer(1,0,4,editArea.width) -- ch, start, duration, number of samples to make
-  -- end softcut
-  
-  screenDirty = true -- make sure we draw screen straight away
-
+  updateCursor()
+  redraw()
 end
 
--- loading a file handler: sets waveform information, softcut voice settings
-function load_file(file)
-  if file ~= "cancel" then
-    local ch, length, rate = audio.file_info(file)     --get file info
-    local lengthInS = length * (1 / rate)    --get length and limit to 1s
-    if lengthInS > 1 then lengthInS = 1 end
-    waveform.length[currentTrack] = lengthInS
-    softcut.buffer_clear_region(currentTrack+1, 1, 0, 0)    -- erase section of buffer
-    --load file into buffer (file, start_source, start_destination, duration, channel_source, channel_destination, preserve, mix)
-    softcut.buffer_read_mono(file, 0, currentTrack+1, lengthInS, 1, 1, 0)
-    --read samples into waveformSamples (eventually) (channel, start, duration, samples)
-    softcut.render_buffer(1,currentTrack+1,1,editArea.width + 1)
+function updateCursor() -- calculate the x position: beat + subdivision, and width of subdision
+  if curXbeat == 0 or currentTrack == 0 then
+    beatoffset = 0
+    subdivoffset = 0
+    curXwidth = screenWidth
+  else
+    beatoffset = (curXbeat - 1) / rhythmicDisplay[currentTrack][1]
+    subdivoffset = (1 / rhythmicDisplay[currentTrack][1]) * ((curXdiv - 1) / rhythmicDisplay[currentTrack][curXbeat + 1])
+    curXwidth = math.floor(screenWidth * (1 / rhythmicDisplay[currentTrack][1]) * (1 / rhythmicDisplay[currentTrack][curXbeat + 1]))
   end
-  weLoading = false
+  curXdisp = math.floor((beatoffset + subdivoffset) * screenWidth)
 end
 
---draw a bright box for each of the events in trackEvents, so you can see what you're doing!
-function drawEvents()
-  for i, data in ipairs(trackEvents) do -- check each event in trackEvents
-    if (data[4] ~= nil and data[3] < tracksAmount) then -- if data exists, and is within tracksAmount
-      -- set some local, human-readable variables
-      local x = editArea.border + math.floor(editArea.width * data[1])
-      local y = editArea.border + data[3] * editArea.trackHeight 
-      local w = math.floor(editArea.width * data[2])
-      local h = editArea.trackHeight
-      local dynamic = math.floor(data[4] * 15) -- set event brightness based on note dynamic
-      screen.level(dynamic)
-      --check whether the current event index is being moved, and if so, MAKE IT BLACK
-      for j=#movingEvents, 1, -1 do
-        if movingEvents[j] == i then
-          screen.level(1)
-        end
-      end
-      screen.rect(x, y, w, h)
-      screen.fill() -- draw the event
-      -- plus a nice little line for the onset
-      screen.level(0)
-      screen.rect(x, y, 1, h)
+function redraw()
+  screen.clear()
+  screen.line_width(1)
+  
+    -- rectangle for cursor background
+--[[  screen.level(1)
+  screen.rect(curXdisp, curYPos, curXwidth, (screenHeight / tracksAmount))
+  screen.fill()--]]
+  --draw notes 2.0
+  screen.level(4)
+  for i=1, #noteEvents do
+    if noteEvents[i][3] then
+      screen.rect(
+        noteEvents[i][2] * 128, 
+        (noteEvents[i][1] - 1) * (screenHeight / tracksAmount),
+        noteEvents[i][3] * 128, 
+        screenHeight / tracksAmount)
       screen.fill()
     end
   end
-end
 
--- add and remove events from TrackEvents, called by button handler
-function addRemoveEvents()
-  --set some human-readable local variables
-  local barFraction = beatsAmount / 4 --how many groups of four beats do we have?
-  local position = (beatCursor - 1) / (resolutions[segmentLength] * barFraction) -- how far through the edit window in bars are we?
-  local length = 1 / (resolutions[segmentLength] * barFraction) -- how wide is the cursor?
-  local foundOne = false -- initially, we haven't grabbed anything yet
-  
-  --check for clashes, and delete event
-  -- trackEvents structure reminder: [position, length, track, dynamic] 
-  if #trackEvents > 0 then --if we have any events at all
-    for i=#trackEvents, 1, -1 do -- for each item in trackEvents
-      if trackEvents[i][4] ~= nil then -- if there's a valid event at trackEvents[i]
-        if currentTrack == trackEvents[i][3] then -- if the event is on the current track
-        -- if the left edge of the cursor is inside the event boundaries or if the left edge of the event is inside the cursor boundaries
-          if (position >= trackEvents[i][1] and position < trackEvents[i][1] + trackEvents[i][2]) or (trackEvents[i][1] >= position and trackEvents[i][1] < position + length) then
-            table.remove(trackEvents[i]) -- remove the event
-            foundOne = true -- raise flag for we deleted (at least) one
-            screenDirty = true
+  --DON'T TOUCH -- THIS IS WORKING
+  -- lines for each beat and subdivision
+  -- rectangles for notes
+  -- for each track
+  trackHeight = 1 / tracksAmount
+  for i = 1, tracksAmount do                  --for each track
+    displayWidthBeat = 1 / rhythmicDisplay[i][1]
+    for j = 1, rhythmicDisplay[i][1]  do          -- for each beat (skip first index of rhythmicDisplay[currentTrack])
+  		displayWidthSubdiv = displayWidthBeat / rhythmicDisplay[i][j+1]
+      for k = 1, rhythmicDisplay[i][j + 1] do     --for each subdivision
+        --calculate the position and height of each line
+        nowPosition = displayWidthBeat * (j - 1) + displayWidthSubdiv * (k - 1)
+        nowPixel = math.floor(nowPosition * screenWidth)
+        nowHeight = math.floor(trackHeight * (i - 1) * screenHeight)
+ --[[       -- draw notes
+        for l=1, #noteEvents do
+          if i == noteEvents[l][1] and nowPosition == noteEvents[l][2] then
+            screen.level(4)
+            screen.rect(nowPixel, nowHeight, math.floor(128 * displayWidthSubdiv), screenHeight / tracksAmount)
+            screen.fill()
           end
-        end
-      end
-    end
-  end
-  if (not foundOne and not weMoving) then -- if we didn't delete and aren't moving
-    table.insert(trackEvents, {position, length, currentTrack, currentDynamic}) -- insert a new event
-    screenDirty = true
-  end
-end
-
--- draws the sequencer view
-function drawSequencer()
-  -- SQUARES etc.
-  	--a dim background
-  screen.level(1)
-  screen.rect(editArea.border, editArea.border, editArea.width, editArea.height)
-  screen.fill()
-  --track select row
-  screen.level(2)
-  screen.rect(editArea.border, editArea.border + editArea.trackHeight * currentTrack, editArea.width, editArea.trackHeight)
-  --time selection column
-  screen.rect(
-    editArea.border + (editArea.width / beatsAmount) * (4 / resolutions[segmentLength]) * (beatCursor - 1),
-    editArea.border,
-    (editArea.width / beatsAmount) * (4 / resolutions[segmentLength]),
-    editArea.height)
-  screen.fill()
-  --crossover, where track and time selections meet
-  --screen.level(6)
-  --screen.rect(
-  --  editArea.border + (editArea.width / beatsAmount) * (4 / resolutions[segmentLength]) * (beatCursor - 1),
-  --  editArea.border + editArea.trackHeight * currentTrack,
-  --  (editArea.width / beatsAmount) * (4 / resolutions[segmentLength]),
-  --  editArea.trackHeight)
-  --screen.fill()
-  --events
-  drawEvents()
-  --a bright line around the selection
-  if not heldKeys[1] then
-    screen.level(15)
-    screen.rect(
-      editArea.border + (editArea.width / beatsAmount) * (4 / resolutions[segmentLength]) * (beatCursor - 1),
-      editArea.border + editArea.trackHeight * currentTrack,
-      (editArea.width / beatsAmount) * (4 / resolutions[segmentLength]) + 0.5,
-      editArea.trackHeight + 1
-    )
-    screen.stroke()
-  end
-  --play head line, position updated by and taken from ticker(). A dim line on the edit area, plus two bright little ticks outside the area
-  local playheadX = editArea.border + (clockPosition / totalBeats) * editArea.width
-  screen.level(15)
-  screen.move(playheadX, 0)
-  screen.line(playheadX, editArea.border)
-  screen.move(playheadX, editArea.border + editArea.height)
-  screen.line(playheadX, 64)
-  screen.stroke()
-  screen.level(3)
-  for i=1, tracksAmount, 1 do
-    screen.move(playheadX - trackTiming[i] / 12, editArea.border + editArea.trackHeight * (i-1))
-    screen.line(playheadX - trackTiming[i] / 12, editArea.border + editArea.trackHeight * (i))
-  end
-  screen.stroke()
-  
-  --guides, little dots to demarcate bar lines and track lines
-  screen.level(0)
-  for beat=0, beatsAmount, 1 do
-    for track=0, tracksAmount, 1 do
-      screen.pixel(editArea.border + beat * (editArea.width / beatsAmount), editArea.border + track * editArea.trackHeight)
-    end
-  end
-  screen.fill()
-  
-  -- TEXT
-  if heldKeys[1] then -- if we've got K1 held to shift
-    screen.level(8)
-    screen.move(0, 62) -- move to where K2 is
-    if isPlaying then screen.text("stop") else screen.text("play") end
-    for i=1, tracksAmount, 1 do -- draw the display for the track timing offsets
-      screen.move(editArea.border - 2 + editArea.width / 2 + trackTiming[i] / 8, editArea.border + i * editArea.trackHeight -1)
-      if trackTiming[i] > 0 then
-        screen.text("+"..trackTiming[i])
-      else screen.text(trackTiming[i]) end
-      screen.move(116, 63)
-      screen.text(currentDynamic)
-    end
-  else do -- if we're not holding K1 to shift
-      -- cursor position
-      screen.level(15)
-      screen.move(80, 63)
-      screen.text(beatCursor)      -- which beat we're on
-      screen.move(98,63)
-      screen.text("/")       -- a '/'
-      screen.move(116, 63)
-      screen.text(resolutions[segmentLength])      -- cursor length, e.g. an eighth note
-      screen.move(0, 62)
-      screen.text("spl")      -- swap page display for K2
-      if weMoving then
-        screen.move(18, 62)
-        screen.text("holding")
-      end
-    end
-  end
-  screen.move(107,5)
-  screen.text("trk " .. currentTrack + 1)   -- what track we on?
-  
-end
-
--- draws the sampler view
-function drawSampler()
-  --background
-  screen.level(1)
-  screen.rect(editArea.border, editArea.border, editArea.width, editArea.height)
-  screen.fill()
-  --waveform
-  screen.level(15)
-  if waveform.isLoaded[currentTrack + 1] then
-    for i=1, editArea.width, 1 do
-      screen.move(i+editArea.border, editArea.border  + editArea.height * 0.5 + waveform.samples[currentTrack * editArea.width + i] * editArea.height * 0.5)
-      screen.line(i+editArea.border, editArea.border  + editArea.height * 0.5 + waveform.samples[currentTrack * editArea.width + i] * editArea.height * -0.5)
-      screen.stroke()
-    end
-  else screen.move(64,34)
-    screen.text_center("K3 to load sample")
-  end
-  -- TEXT
-  -- above K3
-  screen.move(20,62)
-  screen.text("load")
-  --  screen.fill() -- redundant??
-  screen.level(15)
-  --track label
-  screen.move(107,5)
-  screen.text("trk " .. currentTrack + 1)
-  --"seq", above K2
-  screen.move(0,62)
-  screen.text("seq")
-end
-
--- draw the display!
-function redraw()
-  screen.clear()
-
-  -- decide which view to draw, and draw it
-  if sampleView then drawSampler()
-  else drawSequencer() end
-  
-  --a play/stop icon, to visualise play state
-  screen.level(10)
-  if (isPlaying == true) then
-    screen.move(0,0)
-    screen.line(0,4)
-    screen.line(4,2)
-    screen.close() -- draw a triangle
-    else screen.rect(0,0,4,4) -- draw a square
-    end
-  end
-  screen.fill()
-
-  screen.update()
-end
-
---takes event number, encoder number and turn amount, and moves an event. called by ...
-function moveEvent(i,e,d)
-  if (e == 1) then
-  --move event to a different track
-    local movedTrack = util.clamp(currentTrack + d, 0, tracksAmount - 1)
-    trackEvents[i][3] = movedTrack
-    weMoved = true
-  end
-  if (e == 2) then
-  -- move in time
-    local length = 1 / (resolutions[segmentLength] * beatsAmount / 4)
-    -- TODO at some point,an algo for 'is there an event in the way'
-    -- will it go out of bounds?
-    if (trackEvents[i][1] + trackEvents[i][2] + d * length <= 1 and trackEvents[i][1] + d * length >= 0) then
-      --offset position in time by the cursor length
-      trackEvents[i][1] = trackEvents[i][1] + d * length
-      weMoved = true  
-    end
-  end
-end
-
--- TODO takes a start and end bounds, and fills it with notes of length = 1 / (resolutions[segmentLength] * beatsAmount / 4)
-function doFill(s,e)
-  print("wouldfill. start: "..s..". End: "..e)
-end
-
-function enc(e, d)
-  if (heldKeys[1]) then   --SHIFTING??
-    if sampleView then
-      --sample view shift behaviour, currently nothing
-    else if (e == 2) then -- shift behaviour in sequencer view
-      trackTiming[currentTrack +1] = trackTiming[currentTrack +1] + d -- adjust track timing
-      screenDirty = true
-    end
-    if (e == 3) then    -- test for position, adjust note dynamic
-      local position = (beatCursor - 1) / (resolutions[segmentLength])
-      local length = 1 / (resolutions[segmentLength])
-      currentDynamic = util.clamp(currentDynamic + d/50, 0.1, 1.0)
-      for i=#trackEvents, 1, -1 do
-      --is event under cursor?
-        if trackEvents[i][4] ~= nil then
-          if currentTrack == trackEvents[i][3] then
-            if (position >= trackEvents[i][1] and position < trackEvents[i][1] + trackEvents[i][2]) then
-              --yes
-              currentDynamic = trackEvents[i][4]
-              trackEvents[i][4] = util.clamp(currentDynamic + d/10, 0.1, 1.0)
-            else if (trackEvents[i][1] >= position and trackEvents[i][1] < position + length) then
-              currentDynamic = trackEvents[i][4]
-              trackEvents[i][4] = util.clamp(currentDynamic + d/50, 0.1, 1.0)
+        end ]]--
+        --draw the playback
+        if isPlaying and clockPosition >= nowPosition and clockPosition < nowPosition + displayWidthSubdiv then
+          screen.level(1)
+          screen.rect(nowPixel, nowHeight, math.floor(128 * displayWidthSubdiv), screenHeight / tracksAmount)
+          screen.fill()
+          for m=1, #noteEvents do
+            if noteEvents[m][3] then
+              if i == noteEvents[m][1] and clockPosition >= noteEvents[m][2] and clockPosition < noteEvents[m][2] + noteEvents[m][3] then
+                screen.level(12)
+                screen.rect(noteEvents[m][2] * 128, nowHeight, 128 * noteEvents[m][3], screenHeight / tracksAmount)
+                screen.fill()
               end
             end
           end
         end
-      end
-      screenDirty = true
+        --draw the lines
+        screen.level(5)
+        local gridlevel = 8
+        if k == 1 then screen.level(15)
+          gridlevel = 15 end
+        screen.move(nowPixel, nowHeight)
+        screen.line_rel(1, screenHeight / tracksAmount)
+        screen.stroke()
       end
     end
   end
+  --DON"T TOUCH
   
-  --if we're holding k3, move events
-  if weMoving and #movingEvents > 0 then
-    for i=#movingEvents, 1, -1 do
-      moveEvent(movingEvents[i],e,d)
+  -- rectangle for cursor outside
+  if currentTrack == 0 then
+    screen.level(13)
+    screen.rect(1, 1, screenWidth-1, screenHeight-1)
+    screen.stroke()
+    screen.level(1)
+    screen.rect(2, 2, screenWidth - 3, screenHeight -3)
+    screen.stroke()
+  else
+    screen.level(13)
+    screen.rect(curXdisp + 2, curYPos + 1, curXwidth - 1, (screenHeight / tracksAmount) - 1)
+    screen.stroke()
+    screen.level(1)
+    screen.rect(curXdisp + 3, curYPos + 2, curXwidth - 3, (screenHeight / tracksAmount) - 3)
+    screen.stroke()
+  end
+  
+  screen.update()
+
+end
+
+function redrawGrid()
+--[[  print('drawing grid')
+  local grid_h = g.rows
+  print()
+  g:all(0)
+  -- draw grid
+--  if grid_h == 16 then
+    for r=1, 16 do
+      for i=1, tracksAmount do -- for each track
+        for j=1, rhythmicDisplay[i][1] do --for each beat
+          local beatpos = 1 + math.floor(j / rhythmicDisplay[i][1])
+          for k=1, rhythmicDisplay[i][j+1] do
+            divpos = math.floor(k / rhythmicDisplay[i][j])
+            print('checking at '..16 * beatpos * divpos)
+            if r == 16 * beatpos * divpos then
+              local glevel = 3 else glevel = 0 
+            end
+            print('drawing a light at '..r..', '..k)
+            g.level(r,k,glevel)
+          end
+        end
+      end
+--    end
+  end
+  g:refresh()--]]
+end
+
+function enc(e, d)
+  --move cursor between tracks
+  if (e == 1) then
+    local foundit = false
+    curXdisp = curXdisp / 128
+    if currentTrack > 0 then
+      displayWidthBeat = 1 / rhythmicDisplay[currentTrack][1]
+      dws = displayWidthBeat / rhythmicDisplay[currentTrack][curXbeat+1]
+      xcenter = curXdisp + dws * 0.5
+    else
+      displayWidthBeat = 1
+      dws = 1
+      xcenter = 0
     end
+    currentTrack = util.clamp(currentTrack + d, 0, tracksAmount)  --change track
+    -- how wide is a beat, decimal
+    if currentTrack > 0 then displayWidthBeat = 1 / rhythmicDisplay[currentTrack][1] end
+    -- for each beat
+    if currentTrack > 0 then
+      for i=1, rhythmicDisplay[currentTrack][1] do
+        --how wide is subdiv in this beat
+        dws = displayWidthBeat / rhythmicDisplay[currentTrack][i+1]
+        dwb = displayWidthBeat * (i - 1)
+        for j=1, rhythmicDisplay[currentTrack][i + 1] do
+          -- if cursor pos is within this subdiv
+          if xcenter >= dwb + dws * (j - 1) and xcenter < dwb + dws * (j) then
+            curXbeat = i
+            curXdiv = j
+            foundit = true
+            break
+          end
+          if foundit then break end
+        end
+        if foundit then break end
+      end
+    end
+    updateCursor()
+    curYPos = math.floor((currentTrack - 1) * (screenHeight / tracksAmount))
     screenDirty = true
+    gridDirty= true
   end
 
-  --move cursor between tracks
-  if (e == 1 and not heldKeys[1]) then
-    currentTrack = util.clamp(currentTrack + d, 0, tracksAmount - 1)
-    screenDirty = true
-  end
-  
   -- move cursor in time
-  if (e == 2 and not heldKeys[1]) then
-    beatCursor = math.floor(util.clamp(beatCursor + d, 1, resolutions[segmentLength] * beatsAmount/4))
+  if (e == 2) then
+    --in/decrement the position in the array
+    curXdiv = curXdiv + d
+                                    --going up
+    if curXdiv > rhythmicDisplay[currentTrack][curXbeat + 1] then
+      curXbeat = curXbeat + 1
+      if curXbeat > rhythmicDisplay[currentTrack][1] then 
+        curXbeat = rhythmicDisplay[currentTrack][1]
+        curXdiv = rhythmicDisplay[currentTrack][curXbeat + 1]
+        else curXdiv = 1
+      end
+    end
+    if curXdiv < 1 then             --going down
+      curXbeat = curXbeat - 1
+      if curXbeat < 1 then curXbeat, curXdiv = 0, 1 else
+      curXdiv = rhythmicDisplay[currentTrack][curXbeat + 1] end
+    end
+
+    updateCursor() -- update cursor
+    
     screenDirty = true
+    gridDirty= true
   end
-  
-  --adjust segment Length
-  if (e == 3 and not heldKeys[1] and not heldKeys[3]) then
-    local beatCursorThen = (beatCursor - 1) / resolutions[segmentLength]
-    segmentLength = util.clamp(segmentLength - d, 1, #resolutions)
-    -- round up beatCursor
-    beatCursor = math.floor(math.min(1. + beatCursorThen * resolutions[segmentLength]), resolutions[segmentLength])
+
+  --adjust beat/subdiv amount
+  if (e == 3) then
+    -- if we're changing beats
+    if currentTrack > 0 then
+      if curXbeat == 0 then
+        if d > 0 then
+          if rhythmicDisplay[currentTrack][1] < 12 then
+          table.insert(rhythmicDisplay[currentTrack], 1)
+          rhythmicDisplay[currentTrack][1] = rhythmicDisplay[currentTrack][1] + 1 end
+        else rhythmicDisplay[currentTrack][1] = util.clamp(rhythmicDisplay[currentTrack][1] - 1, 1, 12)
+        end
+      -- if we're not on beats, just change the subdiv
+      else 
+        rhythmicDisplay[currentTrack][curXbeat + 1] = util.clamp(rhythmicDisplay[currentTrack][curXbeat + 1] + d, 1, 12) end
+    else tracksAmount = util.clamp(tracksAmount + d, 1, 8)  --change number of tracks
+      redraw()
+    end
+    if currentTrack > 0 and curXdiv > rhythmicDisplay[currentTrack][curXbeat + 1] then
+      curXdiv = rhythmicDisplay[currentTrack][curXbeat + 1] end
+    updateCursor()
     screenDirty = true
+    gridDirty= true
   end
 
 end
 
 function key(k, z)
-  
-  heldKeys[k] = z == 1 -- store if we're holding any keys
-  
-  -- check if there are events under the cursor, and if so add them to a list (movingEvents) so they can be moved when the encoder is called
-  if (heldKeys[3] and not sampleView) then
-    --store initial position to check that we actually move something. if we don't end up moving the cursor, we will add/remove an event
-    nowPosition[1] = beatCursor
-    nowPosition[2] = currentTrack
+  --add/remove notes
+  if k==3 and z==1 then
+    local foundOne = false
+    local displayWidthBeat = 1 / rhythmicDisplay[currentTrack][1]
+    local displayWidthSubdiv = displayWidthBeat / rhythmicDisplay[currentTrack][curXbeat + 1]
+    local nowPosition = displayWidthBeat * (curXbeat - 1) + displayWidthSubdiv * (curXdiv - 1)
 
-    --calculate decimal values for the cursor start/end (event positions are stored as 0-1.)
-    local selectposition = (beatCursor - 1) / (resolutions[segmentLength] * (beatsAmount / 4))
-    local selectlength = 1 / (resolutions[segmentLength] * (beatsAmount / 4)) - (1/192)
-    if selectlength < 1/192 then selectlength = 1/192 end
-
-    --look through all the track events to see whether each one is under the cursor, and add the event index to a table if so
-    for i=#trackEvents, 1, -1 do
-      if trackEvents[i][4] ~= nil then      --if the event hasn't been deleted
-        local eventEnd = trackEvents[i][1] + trackEvents[i][2]        --store a friendly event end point
-        if (currentTrack == trackEvents[i][3] and selectposition < eventEnd and selectposition >= trackEvents[i][1]) then --is under cursor
-          weMoving = true
-          table.insert(movingEvents,i) -- store the index of the event
-          else if (currentTrack == trackEvents[i][3] and trackEvents[i][1] >= selectposition and trackEvents[i][1] < selectposition + selectlength) then
-            weMoving = true
-            table.insert(movingEvents,i)
+    if #noteEvents > 0 then --if we've got any notes at all
+      for i=1, #noteEvents do
+        if noteEvents[i][3] then
+          if (currentTrack == noteEvents[i][1] and nowPosition >= noteEvents[i][2] and nowPosition < noteEvents[i][2] + noteEvents[i][3]) or (currentTrack == noteEvents[i][1] and nowPosition + displayWidthSubdiv > noteEvents[i][2] and nowPosition + displayWidthSubdiv <= noteEvents[i][2] + noteEvents[i][3]) then
+            --remove this note
+            table.remove(noteEvents[i])
+            foundOne = true
+            screenDirty = true
+            gridDirty= true
           end
         end
       end
+    end 
+    if (not foundOne) then -- if we didn't delete
+      table.insert(noteEvents, 1, {currentTrack, nowPosition, displayWidthSubdiv}) -- insert a new note
+      screenDirty = true
+      gridDirty= true
     end
   end
 
-  --play/stop
-  if (heldKeys[1] and k == 2 and z == 0) then
+  if (k == 2 and z == 1) then
     if isPlaying then
       isPlaying = false
       clockPosition = 0
       screenDirty = true
+      gridDirty= true
     else
       isPlaying = true
       clock.run(ticker) -- need to call this every time? hmm
+      screenDirty = true
+      gridDirty= true
     end
-  else if (k == 2 and z == 0) then 
-    sampleView = not sampleView 
-    screenDirty = true 
-  end
-  end
-
-  -- load sample
-	if sampleView and k == 3 and z == 0 then
-	  weLoading = true
-	  print("loading a file onto track " .. currentTrack + 1)
-		fileselect.enter(_path.audio,load_file) -- starts the fileselect function, taking screen control and eventually passing a file location
-	end
-  
-  if (k == 3 and z == 0 and not sampleView) then
-    if not weMoved then addRemoveEvents() end -- a simple press of K3, we add or remove event(s) under the cursor
-    weMoving = false
-    if weMoved then -- when we release K3, reset the conditions for moving events:
-      weMoved = false
-      movingEvents = {}
-    end
-  end
-
+  end  
 end
 
 function cleanup() --------------- cleanup() is automatically called on script close
