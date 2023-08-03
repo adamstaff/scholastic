@@ -1,5 +1,5 @@
 util = require "util"
-engine.name = 'KarplusRings'
+engine.name = 'PolyPerc'
 
 local grid = util.file_exists(_path.code.."midigrid") and include "midigrid/lib/mg_128" or grid
 g = grid.connect()
@@ -43,8 +43,6 @@ function init()
   gridDirty = true
   
   --engine stuff
-  engine.decay(0.9)
-  engine.coef(0.2)
   engine.amp(1)
 
   -- screen variables
@@ -65,7 +63,7 @@ function init()
   tracksAmount = 4
   
   noteEvents = {           -- pairs. [track][decimal time of note]
-    {1,0,0.25}
+    {}
   }
 
   -- declare init cursor variables
@@ -83,9 +81,25 @@ function init()
   --params
   params:add_separator("Scholastic")
   params:add_number("tracksAmount", "Number of Tracks", 1, 8, 4)
-    params:set_action("tracksAmount", function(x)
-      tracksAmount = x
-    end)
+  params:set_action("tracksAmount", function(x) tracksAmount = x end)
+    
+    -- here, we set our PSET callbacks:
+  params.action_write = function(filename,name,number)
+    os.execute("mkdir -p "..norns.state.data.."/"..number.."/")
+    tab.save(rhythmicDisplay,norns.state.data.."/"..number.."/display.data")
+    tab.save(noteEvents,norns.state.data.."/"..number.."/notes.data")
+  end
+  params.action_read = function(filename,silent,number)
+    print("finished reading '"..filename.."'", number)
+    note_data = tab.load(norns.state.data.."/"..number.."/display.data")
+    rhythmicDisplay = note_data -- send this restored table to the sequins
+    note_data = tab.load(norns.state.data.."/"..number.."/notes.data")
+    noteEvents = note_data -- send this restored table to the sequins
+  end
+  params.action_delete = function(filename,name,number)
+    print("finished deleting '"..filename, number)
+    norns.system_cmd("rm -r "..norns.state.data.."/"..number.."/")
+  end
   params:bang()
   --end params
   
@@ -94,7 +108,7 @@ function init()
 end
 
 function updateCursor() -- calculate the x position: beat + subdivision, and width of subdision
-  if curXbeat == 0 then
+  if curXbeat == 0 or currentTrack == 0 then
     beatoffset = 0
     subdivoffset = 0
     curXwidth = screenWidth
@@ -178,12 +192,21 @@ function redraw()
   --DON"T TOUCH
   
   -- rectangle for cursor outside
-  screen.level(13)
-  screen.rect(curXdisp + 2, curYPos + 1, curXwidth - 1, (screenHeight / tracksAmount) - 1)
-  screen.stroke()
-  screen.level(1)
-  screen.rect(curXdisp + 3, curYPos + 2, curXwidth - 3, (screenHeight / tracksAmount) - 3)
-  screen.stroke()
+  if currentTrack == 0 then
+    screen.level(13)
+    screen.rect(1, 1, screenWidth-1, screenHeight-1)
+    screen.stroke()
+    screen.level(1)
+    screen.rect(2, 2, screenWidth - 3, screenHeight -3)
+    screen.stroke()
+  else
+    screen.level(13)
+    screen.rect(curXdisp + 2, curYPos + 1, curXwidth - 1, (screenHeight / tracksAmount) - 1)
+    screen.stroke()
+    screen.level(1)
+    screen.rect(curXdisp + 3, curYPos + 2, curXwidth - 3, (screenHeight / tracksAmount) - 3)
+    screen.stroke()
+  end
   
   screen.update()
 
@@ -221,28 +244,36 @@ function enc(e, d)
   if (e == 1) then
     local foundit = false
     curXdisp = curXdisp / 128
-    local displayWidthBeat = 1 / rhythmicDisplay[currentTrack][1]
-    local dws = displayWidthBeat / rhythmicDisplay[currentTrack][curXbeat+1]
-    local xcenter = curXdisp + dws * 0.5
-    currentTrack = util.clamp(currentTrack + d, 1, tracksAmount)  --change track
+    if currentTrack > 0 then
+      displayWidthBeat = 1 / rhythmicDisplay[currentTrack][1]
+      dws = displayWidthBeat / rhythmicDisplay[currentTrack][curXbeat+1]
+      xcenter = curXdisp + dws * 0.5
+    else
+      displayWidthBeat = 1
+      dws = 1
+      xcenter = 0
+    end
+    currentTrack = util.clamp(currentTrack + d, 0, tracksAmount)  --change track
     -- how wide is a beat, decimal
-    local displayWidthBeat = 1 / rhythmicDisplay[currentTrack][1]
+    if currentTrack > 0 then displayWidthBeat = 1 / rhythmicDisplay[currentTrack][1] end
     -- for each beat
-    for i=1, rhythmicDisplay[currentTrack][1] do
-      --how wide is subdiv in this beat
-      local dws = displayWidthBeat / rhythmicDisplay[currentTrack][i+1]
-      local dwb = displayWidthBeat * (i - 1)
-      for j=1, rhythmicDisplay[currentTrack][i + 1] do
-        -- if cursor pos is within this subdiv
-        if xcenter >= dwb + dws * (j - 1) and xcenter < dwb + dws * (j) then
-          curXbeat = i
-          curXdiv = j
-          foundit = true
-          break
+    if currentTrack > 0 then
+      for i=1, rhythmicDisplay[currentTrack][1] do
+        --how wide is subdiv in this beat
+        dws = displayWidthBeat / rhythmicDisplay[currentTrack][i+1]
+        dwb = displayWidthBeat * (i - 1)
+        for j=1, rhythmicDisplay[currentTrack][i + 1] do
+          -- if cursor pos is within this subdiv
+          if xcenter >= dwb + dws * (j - 1) and xcenter < dwb + dws * (j) then
+            curXbeat = i
+            curXdiv = j
+            foundit = true
+            break
+          end
+          if foundit then break end
         end
         if foundit then break end
       end
-      if foundit then break end
     end
     updateCursor()
     curYPos = math.floor((currentTrack - 1) * (screenHeight / tracksAmount))
@@ -278,18 +309,21 @@ function enc(e, d)
   --adjust beat/subdiv amount
   if (e == 3) then
     -- if we're changing beats
-    if curXbeat == 0 then
-      if d > 0 then
-        if rhythmicDisplay[currentTrack][1] < 12 then
-        table.insert(rhythmicDisplay[currentTrack], 1)
-        rhythmicDisplay[currentTrack][1] = rhythmicDisplay[currentTrack][1] + 1 end
-      else rhythmicDisplay[currentTrack][1] = util.clamp(rhythmicDisplay[currentTrack][1] - 1, 1, 12)
-      end
-    -- if we're not on beats, just change the subdiv
-    else 
-      rhythmicDisplay[currentTrack][curXbeat + 1] = util.clamp(rhythmicDisplay[currentTrack][curXbeat + 1] + d, 1, 12) end
-    
-    if curXdiv > rhythmicDisplay[currentTrack][curXbeat + 1] then
+    if currentTrack > 0 then
+      if curXbeat == 0 then
+        if d > 0 then
+          if rhythmicDisplay[currentTrack][1] < 12 then
+          table.insert(rhythmicDisplay[currentTrack], 1)
+          rhythmicDisplay[currentTrack][1] = rhythmicDisplay[currentTrack][1] + 1 end
+        else rhythmicDisplay[currentTrack][1] = util.clamp(rhythmicDisplay[currentTrack][1] - 1, 1, 12)
+        end
+      -- if we're not on beats, just change the subdiv
+      else 
+        rhythmicDisplay[currentTrack][curXbeat + 1] = util.clamp(rhythmicDisplay[currentTrack][curXbeat + 1] + d, 1, 12) end
+    else tracksAmount = util.clamp(tracksAmount + d, 1, 8)  --change number of tracks
+      redraw()
+    end
+    if currentTrack > 0 and curXdiv > rhythmicDisplay[currentTrack][curXbeat + 1] then
       curXdiv = rhythmicDisplay[currentTrack][curXbeat + 1] end
     updateCursor()
     screenDirty = true
@@ -305,7 +339,6 @@ function key(k, z)
     local displayWidthBeat = 1 / rhythmicDisplay[currentTrack][1]
     local displayWidthSubdiv = displayWidthBeat / rhythmicDisplay[currentTrack][curXbeat + 1]
     local nowPosition = displayWidthBeat * (curXbeat - 1) + displayWidthSubdiv * (curXdiv - 1)
-    print(nowPosition)
 
     if #noteEvents > 0 then --if we've got any notes at all
       for i=1, #noteEvents do
