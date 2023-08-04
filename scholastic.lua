@@ -18,6 +18,8 @@
 -- K3 - Insert / remove a note
 
 util = require "util"
+MusicUtil = require "musicutil"
+
 engine.name = 'PolyPerc'
 
 local grid = util.file_exists(_path.code.."midigrid") and include "midigrid/lib/mg_128" or grid
@@ -27,9 +29,11 @@ g = grid.connect()
 function redraw_clock() ----- a clock that draws space
   while true do ------------- "while true do" means "do this forever"
     clock.sleep(1/15) ------- pause for a fifteenth of a second (aka 15fps)
-    if screenDirty or isPlaying then ---- only if something changed
+    if screenDirty or isPlaying or heldKeys[1] then ---- only if something changed
       redraw() -------------- redraw space
-      screenDirty = false -- and everything is clean again
+      if hudTime < 0 then
+        screenDirty = false -- and everything is clean again
+      end
     end
     if gridDirty then
       redrawGrid()
@@ -41,17 +45,16 @@ end
 --tick along, play events
 function ticker()
   while isPlaying do
-    if (clockPosition >= 1) then clockPosition = 0 end  --loop clock
-      
+    if (clockPosition >= 4) then clockPosition = 0 end  --loop clock
     for i = 1, #noteEvents do                           -- play notes
       if noteEvents[i][3] and noteEvents[i][1] <= tracksAmount then
-        if math.floor(clockPosition*192) == math.floor(noteEvents[i][2] * 192) then
-          engine.hz(noteEvents[i][1] * 55)
+        if math.floor(clockPosition*192) == math.floor(util.round(noteEvents[i][2] * 192 * 4, 0.0001)) then
+          engine.hz(rhythmicDisplay[noteEvents[i][1]]['f'])
         end
       end
     end
-    clockPosition = clockPosition + tick            -- move to next clock position
-    clock.sync(1/48)                           -- and wait
+    clockPosition = util.round(clockPosition + tick, 0.0001)            -- move to next clock position
+    clock.sync(1/192)                               -- and wait
   end
 end
 
@@ -63,27 +66,33 @@ function init()
   
   --engine stuff
   engine.amp(1)
+  engine.release(0.2)
 
   -- screen variables
   screenWidth = 128
   screenHeight = 64
+  curFlashTime = 0
+  function curFlash()
+    local level = 0
+    curFlashTime = curFlashTime + 1
+    if curFlashTime > 8 then curFlashTime = 0 end
+    if curFlashTime > 4 then level=15 else level = 10 end
+    return screen.level(level)
+  end
+  hudTime = 0
   
-  rhythmicDisplay = {    -- [1] = number of beats, then the rest is the subdivion in each beat
-    {3, 1, 1, 1, 1},
-    {4, 2, 2, 2, 2},
-    {2, 5, 5, 1, 1},
-    {4, 1, 1, 1, 1},
-    {4, 1, 1, 1, 1},
-    {4, 1, 1, 1, 1},
-    {4, 1, 1, 1, 1},
-    {4, 1, 1, 1, 1}
+  rhythmicDisplay = {    -- [1] = number of beats, then the rest is the subdivion in each beat, 'f'=h z for engine
+    {3, 1, 1, 1, 1, ['f']=55},
+    {4, 2, 2, 2, 2, ['f']=110},
+    {2, 5, 5, 1, 1, ['f']=220},
+    {4, 1, 1, 1, 1, ['f']=440},
+    {4, 1, 1, 1, 1, ['f']=880},
+    {4, 1, 1, 1, 1, ['f']=1760},
+    {4, 1, 1, 1, 1, ['f']=3520},
+    {4, 1, 1, 1, 1, ['f']=7040}
   }
   
-  tracksAmount = 4
-  
-  noteEvents = {           -- pairs. [track][decimal time of note]
-    {}
-  }
+  noteEvents = {}           -- [track][decimal time of note][length]
 
   -- declare init cursor variables
   currentTrack,curXbeat,curXdiv,curXdisp,displayWidthBeat,curYPos=1,1,1,1,1,0
@@ -93,16 +102,32 @@ function init()
   -- 1 / number of beat * 1 / number of subdivs in current beat
   curXwidth = (1 / rhythmicDisplay[currentTrack][1]) * (1 / rhythmicDisplay[currentTrack][curXbeat + 1])
   
+  heldKeys = {false, false, false}
   for i =1 , 3 do
     norns.enc.sens(i, 4)
   end
+  changedBeat = {}
   
   --params
-  params:add_separator("Scholastic")
+  params:add_separator("-Scholastic Global-")
   params:add_number("tracksAmount", "Number of Tracks", 1, 8, 4)
   params:set_action("tracksAmount", function(x) tracksAmount = x end)
-    
-    -- here, we set our PSET callbacks:
+  params:add_separator("Engine")
+  params:add{type="control",id="Release",controlspec=controlspec.new(0,10,'lin',0,0.5,''),
+    action=function(x) engine.release(x) end}
+  params:add{type="control",id="Pulse Width",controlspec=controlspec.new(0,1,'lin',0,0.5,''),
+    action=function(x) engine.pw(x) end}
+  --set notes for each track
+  params:add_separator("Synth Notes")
+  for i=1, 8 do
+    params:add_number("track"..i.."note", "Track "..i.." Note:", 1, 127, 36+i*2)
+    params:set_action("track"..i.."note", function(x) 
+      local freq = MusicUtil.note_num_to_freq(x)
+        rhythmicDisplay[i]['f'] = freq
+    end)
+  end
+
+    -- here, we set our PSET callbacks for save / load:
   params.action_write = function(filename,name,number)
     os.execute("mkdir -p "..norns.state.data.."/"..number.."/")
     tab.save(rhythmicDisplay,norns.state.data.."/"..number.."/display.data")
@@ -174,23 +199,18 @@ function redraw()
         nowPosition = displayWidthBeat * (j - 1) + displayWidthSubdiv * (k - 1)
         nowPixel = math.floor(nowPosition * screenWidth)
         nowHeight = math.floor(trackHeight * (i - 1) * screenHeight)
- --[[       -- draw notes
-        for l=1, #noteEvents do
-          if i == noteEvents[l][1] and nowPosition == noteEvents[l][2] then
-            screen.level(4)
-            screen.rect(nowPixel, nowHeight, math.floor(128 * displayWidthSubdiv), screenHeight / tracksAmount)
-            screen.fill()
-          end
-        end ]]--
         --draw the playback
-        if isPlaying and clockPosition >= nowPosition and clockPosition < nowPosition + displayWidthSubdiv then
-          screen.level(1)
+        if isPlaying and clockPosition/4 >= nowPosition  and clockPosition/4 < nowPosition + displayWidthSubdiv then
+          --flash squares, or don't
+          local level = 1 + math.floor(10 * (nowPosition + displayWidthSubdiv - clockPosition /4))
+          screen.level(level)
           screen.rect(nowPixel, nowHeight, math.floor(128 * displayWidthSubdiv), screenHeight / tracksAmount)
           screen.fill()
           for m=1, #noteEvents do
             if noteEvents[m][3] then
-              if i == noteEvents[m][1] and clockPosition >= noteEvents[m][2] and clockPosition < noteEvents[m][2] + noteEvents[m][3] then
-                screen.level(12)
+              if i == noteEvents[m][1] and clockPosition/4 >= noteEvents[m][2] and clockPosition/4 < noteEvents[m][2] + noteEvents[m][3] then
+                local level = 8 + math.floor(25 * (nowPosition + displayWidthSubdiv - clockPosition/4))
+                screen.level(level)
                 screen.rect(noteEvents[m][2] * 128, nowHeight, 128 * noteEvents[m][3], screenHeight / tracksAmount)
                 screen.fill()
               end
@@ -198,8 +218,8 @@ function redraw()
           end
         end
         --draw the lines
-        screen.level(5)
-        local gridlevel = 8
+        screen.level(2)
+        local gridlevel = 5
         if k == 1 then screen.level(15)
           gridlevel = 15 end
         screen.move(nowPixel, nowHeight)
@@ -212,19 +232,69 @@ function redraw()
   
   -- rectangle for cursor outside
   if currentTrack == 0 then
-    screen.level(13)
+    curFlash()
     screen.rect(1, 1, screenWidth-1, screenHeight-1)
     screen.stroke()
     screen.level(1)
     screen.rect(2, 2, screenWidth - 3, screenHeight -3)
     screen.stroke()
   else
-    screen.level(13)
+    curFlash()
     screen.rect(curXdisp + 2, curYPos + 1, curXwidth - 1, (screenHeight / tracksAmount) - 1)
     screen.stroke()
     screen.level(1)
     screen.rect(curXdisp + 3, curYPos + 2, curXwidth - 3, (screenHeight / tracksAmount) - 3)
     screen.stroke()
+  end
+  --HUD for values
+  if heldKeys[1] then
+    screen.level(2)
+    screen.rect(0,57,51,12)
+    screen.rect(61,57,72, 21)
+    screen.fill()
+    screen.level(1)
+    screen.rect(0,57,51,12)
+    screen.rect(61,57,72, 21)
+    screen.stroke()
+    screen.level(15)
+    screen.move(1,63)
+    screen.text("release: "..params:get("Release"))
+    screen.move(127, 63)
+    screen.text_right("pulse width: "..params:get("Pulse Width"))
+    screen.fill()
+  end
+  
+  --HUD for beat changes
+  if #changedBeat > 0 then
+    hudTime = hudTime - 1
+    if changedBeat[1] == -1 then
+      screen.level(1)
+      screen.rect(59,28,10,8)
+      screen.fill()
+      screen.level(15)
+      screen.move(64,34)
+      screen.text_center(tracksAmount)
+    else if hudTime < 0 then changedBeat = {}
+    else
+      if curXbeat > 0 then
+        local xpos = (changedBeat[2] - 1) * (screenWidth / rhythmicDisplay[currentTrack][1]) + ((screenWidth / rhythmicDisplay[currentTrack][1]) / 2)
+        screen.level(1)
+        screen.rect(xpos - 5,(currentTrack - 1) * screenHeight / tracksAmount + screenHeight / (tracksAmount * 2) -4,11,8)
+        screen.fill()
+        screen.level(15)
+        screen.move(xpos, 
+          changedBeat[1] * (screenHeight /tracksAmount) - ((screenHeight /tracksAmount) / 2) + 2)
+          screen.text_center(changedBeat[3])
+      else -- we changed beat
+        screen.level(1)
+        screen.rect(59,(currentTrack - 1) * screenHeight / tracksAmount + screenHeight / (tracksAmount * 2) -4,11,8)
+        screen.fill()
+        screen.level(15)
+        screen.move(64,(currentTrack - 1) * screenHeight / tracksAmount + screenHeight / (tracksAmount * 2) + 2)
+        screen.text_center(rhythmicDisplay[currentTrack][1])
+      end
+    end
+    end
   end
   
   screen.update()
@@ -259,6 +329,9 @@ function redrawGrid()
 end
 
 function enc(e, d)
+  
+  if e == 1 or e==2 then changedBeat = {} end
+  
   --move cursor between tracks
   if (e == 1) then
     local foundit = false
@@ -301,10 +374,13 @@ function enc(e, d)
   end
 
   -- move cursor in time
-  if (e == 2) then
+  if heldKeys[1] and e==2 then
+    local release = params:get("Release")
+    params:set("Release", release + d * 0.1)
+  elseif heldKeys[1] == false and (e == 2)  and currentTrack > 0 then
     --in/decrement the position in the array
     curXdiv = curXdiv + d
-                                    --going up
+    --going up
     if curXdiv > rhythmicDisplay[currentTrack][curXbeat + 1] then
       curXbeat = curXbeat + 1
       if curXbeat > rhythmicDisplay[currentTrack][1] then 
@@ -326,7 +402,10 @@ function enc(e, d)
   end
 
   --adjust beat/subdiv amount
-  if (e == 3) then
+  if heldKeys[1] and e==3 then
+    local release = params:get("Pulse Width")
+    params:set("Pulse Width", util.clamp(release + d * 0.01, 0.01, 0.99))
+  elseif (e == 3) then
     -- if we're changing beats
     if currentTrack > 0 then
       if curXbeat == 0 then
@@ -337,21 +416,29 @@ function enc(e, d)
         else rhythmicDisplay[currentTrack][1] = util.clamp(rhythmicDisplay[currentTrack][1] - 1, 1, 12)
         end
       -- if we're not on beats, just change the subdiv
-      else 
+      else
         rhythmicDisplay[currentTrack][curXbeat + 1] = util.clamp(rhythmicDisplay[currentTrack][curXbeat + 1] + d, 1, 12) end
-    else tracksAmount = util.clamp(tracksAmount + d, 1, 8)  --change number of tracks
+    else params:set("tracksAmount", util.clamp(tracksAmount + d, 1, 8))  --change number of tracks
       redraw()
     end
     if currentTrack > 0 and curXdiv > rhythmicDisplay[currentTrack][curXbeat + 1] then
       curXdiv = rhythmicDisplay[currentTrack][curXbeat + 1] end
+    if currentTrack > 0 then changedBeat = {currentTrack,curXbeat,rhythmicDisplay[currentTrack][curXbeat + 1]} 
+      else changedBeat = {-1,-1,-1}
+    end
     updateCursor()
     screenDirty = true
     gridDirty= true
+    hudTime = 15
   end
 
 end
 
 function key(k, z)
+  
+  heldKeys[k] = z == 1
+  if k==1 then screenDirty = true end
+  
   --add/remove notes
   if k==3 and z==1 then
     local foundOne = false
@@ -373,7 +460,7 @@ function key(k, z)
       end
     end 
     if (not foundOne) then -- if we didn't delete
-      table.insert(noteEvents, 1, {currentTrack, nowPosition, displayWidthSubdiv}) -- insert a new note
+      table.insert(noteEvents, 1, {currentTrack, nowPosition, displayWidthSubdiv}) -- insert a new note, time four to make the clock work
       screenDirty = true
       gridDirty= true
     end
