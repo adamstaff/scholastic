@@ -1,20 +1,16 @@
 # scholastic
-A norns script that borrows ideas from Modalics's Beat Scholar
+A norns script that borrows ideas from Modalics's Beat Scholar:
 https://www.modalics.com/beatscholar
 
-E1 - Select track 
+E1 - Select track
+  Scroll to track 0 to change number of tracks with E3
 E2 - Select position
-E3 - Change division
+  Scroll to beat 0 to change number of beats with E3
+E3 - -+ tracks/beat/division
 
-K1 (long)
-K2 - Randomise (??)
+K1 (long) - Shift
+K2 - Play/Stop
 K3 - Insert / remove a note
 
-Far left is global settings
-Use E3 here to change the number of subdivisions of a track
-
-Then inside each subdivision, use E3 to subdivide further
-
-Use K3 to add and remove notes at the cursor position, hold to make a selection inside which to add-remove notes quickly
-
-Params for changing number of tracks, choosing samples, etc.
+K1+E2 - Synth release
+K1+E3 - Synth pulse width
