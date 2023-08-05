@@ -49,7 +49,12 @@ function ticker()
     for i = 1, #noteEvents do                           -- play notes
       if noteEvents[i][3] and noteEvents[i][1] <= tracksAmount then
         if math.floor(clockPosition*192) == math.floor(util.round(noteEvents[i][2] * 192 * 4, 0.0001)) then
-          engine.hz(rhythmicDisplay[noteEvents[i][1]]['f'])
+					-- if we want to play a note:
+					if note_output == "engine" then
+          	engine.hz(rhythmicDisplay[noteEvents[i][1]]['f'])
+					else if note_output == "midi" then
+						midi_device[target]:note_on(musicutil.freq_to_note_num(noteEvents[i][1]['f]))
+					end
         end
       end
     end
@@ -79,20 +84,15 @@ function init()
     if curFlashTime > 4 then level=15 else level = 10 end
     return screen.level(level)
   end
-  hudTime = 0
+  hudTime = 0						-- times HUD popups when changing params
   
   rhythmicDisplay = {    -- [1] = number of beats, then the rest is the subdivion in each beat, 'f'=h z for engine
-    {3, 1, 1, 1, 1, ['f']=55},
-    {4, 2, 2, 2, 2, ['f']=110},
-    {2, 5, 5, 1, 1, ['f']=220},
-    {4, 1, 1, 1, 1, ['f']=440},
-    {4, 1, 1, 1, 1, ['f']=880},
-    {4, 1, 1, 1, 1, ['f']=1760},
-    {4, 1, 1, 1, 1, ['f']=3520},
-    {4, 1, 1, 1, 1, ['f']=7040}
   }
+  for i=1, 8 do
+    rhythmicDisplay[i] = {4,1,1,1}
+  end
   
-  noteEvents = {}           -- [track][decimal time of note][length]
+  noteEvents = {}           -- [track][decimal time of note][decimal length]
 
   -- declare init cursor variables
   currentTrack,curXbeat,curXdiv,curXdisp,displayWidthBeat,curYPos=1,1,1,1,1,0
@@ -146,6 +146,22 @@ function init()
   end
   params:bang()
   --end params
+
+	--MIDI--
+	midi_device = {} -- container for connected midi devices
+  midi_device_names = {}
+  midi_target = 1
+
+  for i = 1,#midi.vports do -- query all ports
+    midi_device[i] = midi.connect(i) -- connect each device
+    table.insert( -- register its name:
+      midi_device_names, -- table to insert to
+      "port "..i..": "..util.trim_string_to_width(midi_device[i].name,80) -- value to insert
+    )
+  end
+  params:add_option("midi target", "midi target",midi_device_names,1)
+  params:set_action("midi target", function(x) midi_target = x end)
+	--END MIDI--
   
   updateCursor()
   redraw()
