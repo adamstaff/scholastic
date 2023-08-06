@@ -19,6 +19,14 @@
 -- K2: Play/Stop
 -- K3: Insert / remove a note
 
+--[[
+namesofnotes = {'a','b','c','d','e','f','g' = 0,2,3,5,7,8,10}
+function note_name_to_number(note)
+	return note[#note] * 12 + (2 - #note) + namesofnotes[note[1])
+end
+
+]]--
+
 util = require "util"
 MusicUtil = require "musicutil"
 
