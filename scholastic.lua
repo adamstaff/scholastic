@@ -5,17 +5,19 @@
 -- https://www.modalics.com/
 -- beatscholar
 -- 
--- E1 - Select track
+-- E1: Select track
 -- - Scroll to track 0 to change 
--- - number of tracks with E3
--- E2 - Select position
+--   number of tracks with E3
+-- E2: Select position
 -- - Scroll to beat 0 to change 
--- - number of beats with E3
+--   number of beats with E3
 -- E3 - -+ tracks/beat/division
+-- K1 + E1: Transpose
+-- K1 + E2: Engine Release
+-- K1 + E3: Engine PWidth
 -- 
--- K1 (long) -
--- K2 - Play/Stop
--- K3 - Insert / remove a note
+-- K2: Play/Stop
+-- K3: Insert / remove a note
 
 util = require "util"
 MusicUtil = require "musicutil"
@@ -50,9 +52,9 @@ function ticker()
       if noteEvents[i][3] and noteEvents[i][1] <= tracksAmount then
         if math.floor(clockPosition*192) == math.floor(util.round(noteEvents[i][2] * 192 * 4, 0.0001)) then
 					-- if we want to play a note:
-					if note_output == "engine" then
+					if note_output == 1 then
           	engine.hz(rhythmicDisplay[noteEvents[i][1]]['f'])
-					else if note_output == "midi" then
+					else if note_output == 2 then
 						midi_device[target]:note_on(musicutil.freq_to_note_num(noteEvents[i][1]['f]))
 					end
         end
@@ -68,7 +70,8 @@ function init()
   clockPosition = 0
   screenDirty = true
   gridDirty = true
-  
+
+	note_destinations = {"engine", "midi"}
   --engine stuff
   engine.amp(1)
   engine.release(0.2)
@@ -107,18 +110,19 @@ function init()
     norns.enc.sens(i, 4)
   end
   changedBeat = {}
-  
+
   --params
   params:add_separator("-Scholastic Global-")
   params:add_number("tracksAmount", "Number of Tracks", 1, 8, 4)
   params:set_action("tracksAmount", function(x) tracksAmount = x end)
+	params:add{type="option", id="note_output", name="Note Destination Type", options=note_output, default=1, action=function(x) note_output=x end}
   params:add_separator("Engine")
   params:add{type="control",id="Release",controlspec=controlspec.new(0,10,'lin',0,0.5,''),
     action=function(x) engine.release(x) end}
   params:add{type="control",id="Pulse Width",controlspec=controlspec.new(0,1,'lin',0,0.5,''),
     action=function(x) engine.pw(x) end}
   --set notes for each track
-  params:add_separator("Synth Notes")
+  params:add_separator("Output Notes")
   for i=1, 8 do
     params:add_number("track"..i.."note", "Track "..i.." Note:", 1, 127, 36+i*2)
     params:set_action("track"..i.."note", function(x) 
