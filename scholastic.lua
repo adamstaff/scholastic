@@ -51,11 +51,12 @@ function ticker()
     for i = 1, #noteEvents do                           -- play notes
       if noteEvents[i][3] and noteEvents[i][1] <= tracksAmount then
         if math.floor(clockPosition*192) == math.floor(util.round(noteEvents[i][2] * 192 * 4, 0.0001)) then
+          local track = noteEvents[i][1]
 					-- if we want to play a note:
-					if note_output == 1 then
-          	engine.hz(rhythmicDisplay[noteEvents[i][1]]['f'])
-					else if note_output == 2 then
-						midi_device[target]:note_on(musicutil.freq_to_note_num(noteEvents[i][1]['f]))
+					if note_output == 1 or note_output == 3 then
+          	engine.hz(MusicUtil.note_num_to_freq(rhythmicDisplay[track]['n']))
+					elseif note_output == 2 or note_output == 3 then
+						midi_device[midi_target]:note_on(rhythmicDisplay[track]['n'])
 					end
         end
       end
@@ -71,7 +72,8 @@ function init()
   screenDirty = true
   gridDirty = true
 
-	note_destinations = {"engine", "midi"}
+	note_destinations = {"audio", "midi", "audio + midi"}
+	note_output = 1
   --engine stuff
   engine.amp(1)
   engine.release(0.2)
@@ -92,7 +94,7 @@ function init()
   rhythmicDisplay = {    -- [1] = number of beats, then the rest is the subdivion in each beat, 'f'=h z for engine
   }
   for i=1, 8 do
-    rhythmicDisplay[i] = {4,1,1,1}
+    rhythmicDisplay[i] = {4,1,1,1,1}
   end
   
   noteEvents = {}           -- [track][decimal time of note][decimal length]
@@ -115,7 +117,20 @@ function init()
   params:add_separator("-Scholastic Global-")
   params:add_number("tracksAmount", "Number of Tracks", 1, 8, 4)
   params:set_action("tracksAmount", function(x) tracksAmount = x end)
-	params:add{type="option", id="note_output", name="Note Destination Type", options=note_output, default=1, action=function(x) note_output=x end}
+	params:add{type="option", id="note_output", name="Note Destination", options=note_destinations, default=1, action=function(x) note_output=x end}
+		--MIDI--
+	midi_device = {} -- container for connected midi devices
+  midi_device_names = {}
+  midi_target = 1
+
+  for i = 1,#midi.vports do -- query all ports
+    midi_device[i] = midi.connect(i) -- connect each device
+    table.insert(midi_device_names, "port"..i..": "..util.trim_string_to_width(midi_device[i].name,80) -- value to insert
+    )
+  end
+  params:add_option("midi target", "MIDI Device",midi_device_names,1)
+  params:set_action("midi target", function(x) midi_target = x end)
+	--END MIDI--
   params:add_separator("Engine")
   params:add{type="control",id="Release",controlspec=controlspec.new(0,10,'lin',0,0.5,''),
     action=function(x) engine.release(x) end}
@@ -124,10 +139,10 @@ function init()
   --set notes for each track
   params:add_separator("Output Notes")
   for i=1, 8 do
+    rhythmicDisplay[i]['n'] = 36+i*2
     params:add_number("track"..i.."note", "Track "..i.." Note:", 1, 127, 36+i*2)
     params:set_action("track"..i.."note", function(x) 
-      local freq = MusicUtil.note_num_to_freq(x)
-        rhythmicDisplay[i]['f'] = freq
+        rhythmicDisplay[i]['n'] = x
     end)
   end
 
@@ -150,22 +165,6 @@ function init()
   end
   params:bang()
   --end params
-
-	--MIDI--
-	midi_device = {} -- container for connected midi devices
-  midi_device_names = {}
-  midi_target = 1
-
-  for i = 1,#midi.vports do -- query all ports
-    midi_device[i] = midi.connect(i) -- connect each device
-    table.insert( -- register its name:
-      midi_device_names, -- table to insert to
-      "port "..i..": "..util.trim_string_to_width(midi_device[i].name,80) -- value to insert
-    )
-  end
-  params:add_option("midi target", "midi target",midi_device_names,1)
-  params:set_action("midi target", function(x) midi_target = x end)
-	--END MIDI--
   
   updateCursor()
   redraw()
@@ -504,4 +503,5 @@ end
 function cleanup() --------------- cleanup() is automatically called on script close
   clock.cancel(redraw_clock_id) -- melt our clock via the id we noted
   -- should we melt the ticker clock too?
+  
 end
