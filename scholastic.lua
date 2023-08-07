@@ -19,14 +19,6 @@
 -- K2: Play/Stop
 -- K3: Insert / remove a note
 
---[[
-namesofnotes = {'a','b','c','d','e','f','g' = 0,2,3,5,7,8,10}
-function note_name_to_number(note)
-	return note[#note] * 12 + (2 - #note) + namesofnotes[note[1])
-end
-
-]]--
-
 util = require "util"
 MusicUtil = require "musicutil"
 
@@ -149,8 +141,8 @@ function init()
   for i=1, 8 do
     rhythmicDisplay[i]['n'] = 36+i*2
     params:add_number("track"..i.."note", "Track "..i.." Note:", 1, 127, 36+i*2)
-    params:set_action("track"..i.."note", function(x) 
-        rhythmicDisplay[i]['n'] = x
+    params:set_action("track"..i.."note", function(x)
+      rhythmicDisplay[i]['n'] = x
     end)
   end
 
@@ -276,18 +268,25 @@ function redraw()
   --HUD for values
   if heldKeys[1] then
     screen.level(2)
-    screen.rect(0,57,51,12)
-    screen.rect(61,57,72, 21)
+    screen.rect(0,57,51,12) --release
+    screen.rect(92,57,42, 21) --width
+    for i=1, tracksAmount do
+      screen.rect(58,((screenHeight / tracksAmount) / 2) + (i - 1) * (screenHeight / tracksAmount) - 4,12,8) --note
+    end
     screen.fill()
     screen.level(1)
-    screen.rect(0,57,51,12)
-    screen.rect(61,57,72, 21)
+    screen.rect(0,57,51,12) --r
+    screen.rect(92,57,42, 21) --w
     screen.stroke()
     screen.level(15)
     screen.move(1,63)
     screen.text("release: "..params:get("Release"))
     screen.move(127, 63)
-    screen.text_right("pulse width: "..params:get("Pulse Width"))
+    screen.text_right("pw: "..params:get("Pulse Width"))
+    for i=1, tracksAmount do
+      screen.move(64,((screenHeight / tracksAmount) / 2) + (i - 1) * (screenHeight / tracksAmount) + 2)
+      screen.text_center(MusicUtil.note_num_to_name(params:get('track'..i..'note'), true))
+    end
     screen.fill()
   end
   
@@ -360,7 +359,16 @@ function enc(e, d)
   if e == 1 or e==2 then changedBeat = {} end
   
   --move cursor between tracks
-  if (e == 1) then
+  if e==1 and heldKeys[1] then
+    if currentTrack == 0 then
+      for i = 1, tracksAmount do
+        local nownote = params:get("track"..i.."note")
+        params:set("track"..i.."note", nownote + d)
+      end
+    else local nownote = params:get("track"..currentTrack.."note")
+      params:set("track"..currentTrack.."note", nownote + d)
+    end
+  elseif (e == 1) then
     local foundit = false
     curXdisp = curXdisp / 128
     if currentTrack > 0 then
