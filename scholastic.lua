@@ -53,8 +53,8 @@ function ticker()
           local track = noteEvents[i][1]
 					-- if we want to play a note:
 					if note_output == 1 or note_output == 3 then
-          	engine.hz(MusicUtil.note_num_to_freq(rhythmicDisplay[track]['n']))
-					elseif note_output == 2 or note_output == 3 then
+          	engine.hz(MusicUtil.note_num_to_freq(rhythmicDisplay[track]['n'])) end
+					if note_output == 2 or note_output == 3 then
 					  play_midi_note(rhythmicDisplay[track]['n'], noteEvents[i][3])
 					end
         end
@@ -76,7 +76,7 @@ function init()
   screen.line_width(1)
 
   --playing notes stuff
-	note_destinations = {"audio", "midi", "audio + midi"}
+	note_destinations = {"engine", "midi", "engine + midi"}
 	note_output = 1
   function play_midi_note(note, duration)  
     midi_device[midi_target]:note_on(note)
@@ -291,23 +291,26 @@ function redraw()
   end
   --HUD for values
   if heldKeys[1] then
-    screen.level(2)
-    screen.rect(0,57,51,12) --release
-    screen.rect(92,57,42, 21) --width
-    for i=1, tracksAmount do
-      screen.rect(58,((screenHeight / tracksAmount) / 2) + (i - 1) * (screenHeight / tracksAmount) - 4,12,8) --note
+    if note_output == 1 or note_output == 3 then
+      screen.level(2)
+      screen.rect(0,57,51,12) --release
+      screen.rect(92,57,42, 21) --width
+      screen.fill()
+      screen.level(1)
+      screen.rect(0,57,51,12) --r
+      screen.rect(92,57,42, 21) --w
+      screen.stroke()
+      screen.level(15)
+      screen.move(1,63)
+      screen.text("release: "..params:get("Release"))
+      screen.move(127, 63)
+      screen.text_right("pw: "..params:get("Pulse Width"))
     end
-    screen.fill()
-    screen.level(1)
-    screen.rect(0,57,51,12) --r
-    screen.rect(92,57,42, 21) --w
-    screen.stroke()
-    screen.level(15)
-    screen.move(1,63)
-    screen.text("release: "..params:get("Release"))
-    screen.move(127, 63)
-    screen.text_right("pw: "..params:get("Pulse Width"))
     for i=1, tracksAmount do
+      screen.level(2)
+      screen.rect(58,((screenHeight / tracksAmount) / 2) + (i - 1) * (screenHeight / tracksAmount) - 4,12,8) --note
+      screen.fill()
+      screen.level(15)
       screen.move(64,((screenHeight / tracksAmount) / 2) + (i - 1) * (screenHeight / tracksAmount) + 2)
       screen.text_center(MusicUtil.note_num_to_name(params:get('track'..i..'note'), true))
     end
@@ -508,7 +511,7 @@ function key(k, z)
     if #noteEvents > 0 then --if we've got any notes at all
       for i=1, #noteEvents do
         if noteEvents[i][3] then
-          if (currentTrack == noteEvents[i][1] and nowPosition >= noteEvents[i][2] and nowPosition < noteEvents[i][2] + noteEvents[i][3]) or (currentTrack == noteEvents[i][1] and nowPosition + displayWidthSubdiv > noteEvents[i][2] and nowPosition + displayWidthSubdiv <= noteEvents[i][2] + noteEvents[i][3]) then
+          if (currentTrack == noteEvents[i][1] and nowPosition >= noteEvents[i][2] and nowPosition < util.round(noteEvents[i][2] + noteEvents[i][3], 0.0001) ) or (currentTrack == noteEvents[i][1] and nowPosition + displayWidthSubdiv > noteEvents[i][2] and nowPosition + displayWidthSubdiv <= noteEvents[i][2] + noteEvents[i][3]) then
             --remove this note
             table.remove(noteEvents[i])
             foundOne = true
@@ -519,7 +522,7 @@ function key(k, z)
       end
     end 
     if (not foundOne) then -- if we didn't delete
-      table.insert(noteEvents, 1, {currentTrack, nowPosition, displayWidthSubdiv}) -- insert a new note, time four to make the clock work
+      table.insert(noteEvents, 1, {currentTrack, nowPosition, util.round(displayWidthSubdiv, 0.0001)}) -- insert a new note, time four to make the clock work
       screenDirty = true
       gridDirty= true
     end
@@ -544,7 +547,6 @@ function key(k, z)
     end
     screenDirty,gridDirty = true, true
   end
-
 end -- end of buttons
 
 function cleanup() --------------- cleanup() is automatically called on script close
