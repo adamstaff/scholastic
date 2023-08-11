@@ -10,7 +10,7 @@ E1 - Select track
 E2 - Select position
 
 	Scroll to beat 0 to change number of beats with E3
-E3 - -+ tracks/beat/division
+E3 - Adjust tracks/beat/division
 
 Keys:
 
@@ -22,6 +22,9 @@ K3 - Insert / remove a note
 
 Encoders and keys:
 
+K1+E1 - Transpose
+
+	Scroll to track 0 to transpose all tracks
 K1+E2 - Synth release
 
 K1+E3 - Synth pulse width
