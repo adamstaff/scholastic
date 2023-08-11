@@ -2,6 +2,10 @@
 A norns script that borrows ideas from Modalics's Beat Scholar:
 https://www.modalics.com/beatscholar
 
+Split the measure into many tuplets. Polyrhythms, trap beats, bolero, and bouncing balls.
+
+Send them to the Polyperc engine, or MIDI output.
+
 Encoders:
 
 E1 - Select track
