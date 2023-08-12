@@ -21,6 +21,7 @@
 
 util = require "util"
 MusicUtil = require "musicutil"
+nb= require "scholastic/lib/nb"
 
 engine.name = 'PolyPerc'
 
@@ -52,9 +53,12 @@ function ticker()
         if math.floor(util.round(clockPosition*192,0.0001)) == math.floor(util.round(noteEvents[i][2] * 192 * (4 * clock_div), 0.0001)) then
           local track = noteEvents[i][1]
 					-- if we want to play a note:
-					if note_output == 1 or note_output == 3 then
-          	engine.hz(MusicUtil.note_num_to_freq(rhythmicDisplay[track]['n'])) end
-					if note_output == 2 or note_output == 3 then
+					if note_output == 1 then engine.hz(MusicUtil.note_num_to_freq(rhythmicDisplay[noteEvents[i][1]]['n'])) end
+					if note_output == 2 then
+          	local player = params:lookup_param("voice_id"):get_player()
+            player:play_note(rhythmicDisplay[noteEvents[i][1]]['n'], 0.5, noteEvents[i][3])
+          end
+					if note_output == 3 then
 					  play_midi_note(rhythmicDisplay[track]['n'], noteEvents[i][3])
 					end
         end
@@ -67,6 +71,7 @@ function ticker()
 end
 
 function init()
+  nb:init()
   redraw_clock_id = clock.run(redraw_clock) --add these for other clocks so we can kill them at the end
   ticker_clock_id = clock.run(ticker)
   --note_clock_id = clock.run(play_midi_note)
@@ -76,7 +81,7 @@ function init()
   screen.line_width(1)
 
   --playing notes stuff
-	note_destinations = {"engine", "midi", "engine + midi"}
+	note_destinations = {"engine", "nb voice", "midi out"}
 	note_output = 1
   function play_midi_note(note, duration)  
     midi_device[midi_target]:note_on(note)
@@ -135,7 +140,14 @@ function init()
   params:set_action("tracksAmount", function(x) tracksAmount = x end)
   params:add_number("clock_div", "Clock Divide", 1, 4, 1)
   params:set_action("clock_div", function(x) clock_div = x end)
-	params:add{type="option", id="note_output", name="Note Destination", options=note_destinations, default=1, action=function(x) note_output=x end}
+	params:add{type="option", id="note_output", name="Output", options=note_destinations, default=1, action=function(x) note_output=x
+	  if x==3 then params:show('midi target') else params:hide('midi target') end
+	  if x==2 then params:show('voice_id') else params:hide('voice_id') end
+	   _menu.rebuild_params()
+	end}
+	nb:add_param("voice_id", "nb voice") -- adds a voice selector param to your script.
+  nb:add_player_params() -- Adds the parameters for the selected voices to your script.
+
 		--MIDI--
 	midi_device = {} -- container for connected midi devices
   midi_device_names = {}
@@ -187,6 +199,8 @@ function init()
   end
   params:bang()
   --end params
+  
+  params:default()
   
   updateCursor()
   redraw()
