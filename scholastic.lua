@@ -221,6 +221,18 @@ function updateCursor() -- calculate the x position: beat + subdivision, and wid
   curXdisp = math.floor((beatoffset + subdivoffset) * screenWidth)
 end
 
+function change_velocity(d)
+  if #noteEvents > 0 then --if we've got any notes at all
+    for i=1, #noteEvents do
+      if noteEvents[i][3] then
+        if (currentTrack == noteEvents[i][1] and nowPosition >= noteEvents[i][2] and nowPosition < util.round(noteEvents[i][2] + noteEvents[i][3], 0.0001) ) or (currentTrack == noteEvents[i][1] and nowPosition + displayWidthSubdiv > noteEvents[i][2] and nowPosition + displayWidthSubdiv <= noteEvents[i][2] + noteEvents[i][3]) then
+            noteEvents[4] = noteEvents[4] + d
+        end
+      end
+    end
+  end
+end
+
 function redraw()
   screen.clear()
 
@@ -300,10 +312,12 @@ function redraw()
     screen.stroke()
   else
     curFlash()
-    screen.rect(curXdisp+1, curYPos + 1, math.max(curXwidth - 2, 1), (screenHeight / tracksAmount) - 1)
+    y,l = curYPos, screenHeight / tracksAmount
+    if velocity_mode then y,l = 0, screenHeight end
+    screen.rect(curXdisp+1, y + 1, math.max(curXwidth - 2, 1), l - 1)
     screen.stroke()
     screen.level(1)
-    screen.rect(curXdisp+2, curYPos + 2, math.max(curXwidth - 4, 0), (screenHeight / tracksAmount) - 3)
+    screen.rect(curXdisp+2, y + 2, math.max(curXwidth - 4, 0), l - 3)
     screen.stroke()
   end
   --HUD for values
@@ -367,6 +381,21 @@ function redraw()
     end
   end
   
+  --HUD for velocity
+  if velocity_mode then
+    if #noteEvents > 0 then
+      screen.level(15)
+      for i=1, #noteEvents do
+        if noteEvents[i][3] then
+          local x = (noteEvents[i][2] + noteEvents[i][3]/2) * screenWidth
+          local y = (currentTrack -1) * (screenWidth / tracksAmount)
+          screen.move(x,y+4)
+          screen.text_center(noteEvents[i][4])
+        end
+      end
+    end
+  end
+  
   screen.update()
 
 end
@@ -412,7 +441,7 @@ function enc(e, d)
     else local nownote = params:get("track"..currentTrack.."note")
       params:set("track"..currentTrack.."note", nownote + d)
     end
-  elseif (e == 1) then
+  elseif (e == 1 and not velocity_mode) then
     local foundit = false
     curXdisp = curXdisp / 128
     if currentTrack > 0 then
@@ -481,10 +510,10 @@ function enc(e, d)
   end
 
   --adjust beat/subdiv amount
-  if heldKeys[1] and e==3 then
+  if heldKeys[1] and e==3 and not velocity_mode then
     local release = params:get("Pulse Width")
     params:set("Pulse Width", util.clamp(release + d * 0.01, 0.01, 0.99))
-  elseif (e == 3) then
+  elseif (e == 3 and not velocity_mode) then
     -- if we're changing beats
     if currentTrack > 0 then
       if curXbeat == 0 then
@@ -509,6 +538,8 @@ function enc(e, d)
     screenDirty = true
     gridDirty= true
     hudTime = 15
+  elseif e==3 and velocity_mode then
+    change_velocity(d)
   end
 
 end -- END OF ENCODERS
@@ -519,7 +550,7 @@ function key(k, z)
   if k==1 then screenDirty = true end
   
   --add/remove notes
-  if k==3 and z==1 then
+  if k==3 and z==1 and not heldKeys[1] then
     local foundOne = false
     local displayWidthBeat = 1 / rhythmicDisplay[currentTrack][1]
     local displayWidthSubdiv = displayWidthBeat / rhythmicDisplay[currentTrack][curXbeat + 1]
@@ -568,7 +599,7 @@ function key(k, z)
 
 	-- toggle velocity mode
 	if k==3 and z==1 and heldKeys[1] then
-		if velocity_mode then velocity_mode = false else velocity_mode = true
+		if velocity_mode then velocity_mode = false else velocity_mode = true end
 	end
 end -- end of buttons
 
