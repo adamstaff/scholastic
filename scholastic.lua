@@ -18,6 +18,7 @@
 -- 
 -- K2: Play/Stop
 -- K3: Insert / remove a note
+-- K1 + K3: Edit Velocity
 
 util = require "util"
 MusicUtil = require "musicutil"
@@ -59,7 +60,7 @@ function ticker()
             player:play_note(rhythmicDisplay[noteEvents[i][1]]['n'], 0.5, noteEvents[i][3])
           end
 					if note_output == 3 then
-					  play_midi_note(rhythmicDisplay[track]['n'], noteEvents[i][3])
+					  play_midi_note(rhythmicDisplay[track]['n'], noteEvents[i][3], noteEvents[i][4])
 					end
         end
       end
@@ -78,13 +79,14 @@ function init()
   clockPosition = 0
   screenDirty = true
   gridDirty = true
+	velocity_mode = false
   screen.line_width(1)
 
   --playing notes stuff
 	note_destinations = {"engine", "nb voice", "midi out"}
 	note_output = 1
-  function play_midi_note(note, duration)  
-    midi_device[midi_target]:note_on(note)
+  function play_midi_note(note, duration, velocity)  
+    midi_device[midi_target]:note_on(note, velocity)
     local note_time = clock.get_beat_sec() * duration * 4 - 0.01
     clock.run(
       function()
@@ -222,8 +224,8 @@ end
 function redraw()
   screen.clear()
 
-
-  screen.level(3)
+	-- draw note events
+	if velocity_mode then screen.level(1) else screen.level(3) end
   for i=1, #noteEvents do
     if noteEvents[i][3] then
       screen.rect(
@@ -237,23 +239,24 @@ function redraw()
 
 --DON'T TOUCH -- THIS IS WORKING
   -- lines for each beat and subdivision
-  -- rectangles for notes
-  -- for each track
   trackHeight = 1 / tracksAmount
-  for i = 1, tracksAmount do                  --for each track
-    displayWidthBeat = 1 / rhythmicDisplay[i][1]
-    for j = 1, rhythmicDisplay[i][1]  do          -- for each beat (skip first index of rhythmicDisplay[currentTrack])
-  		displayWidthSubdiv = displayWidthBeat / rhythmicDisplay[i][j+1]
-      for k = 1, rhythmicDisplay[i][j + 1] do     --for each subdivision
-        --calculate the position and height of each line
-        nowPosition = displayWidthBeat * (j - 1) + displayWidthSubdiv * (k - 1)
-        nowPixel = math.floor(nowPosition * screenWidth)
-        nowHeight = math.floor(trackHeight * (i - 1) * screenHeight)
-        --draw the playback
+	--for each track:
+  for i = 1, tracksAmount do
+    displayWidthBeat = 1 / rhythmicDisplay[i][1] -- calc track beat width
+		-- for each beat in track:
+    for j = 1, rhythmicDisplay[i][1]  do
+  		displayWidthSubdiv = displayWidthBeat / rhythmicDisplay[i][j+1] -- calc subdivision width in each beat
+			--for each subdivision:
+      for k = 1, rhythmicDisplay[i][j + 1] do
+        --calculate the x, y position and height of each line
+        nowPosition = displayWidthBeat * (j - 1) + displayWidthSubdiv * (k - 1) -- get x pos 0-1
+        nowPixel = math.floor(nowPosition * screenWidth) -- covert to pixel
+        nowHeight = math.floor(trackHeight * (i - 1) * screenHeight) -- get y pos pixel
+        --draw squares, flashing if playing back
         if isPlaying and clockPosition/(4 * clock_div) >= nowPosition  and clockPosition/(4 * clock_div) < nowPosition + displayWidthSubdiv then
           --flash squares, or don't
           local level = 1 + math.floor(10 * (nowPosition + displayWidthSubdiv - clockPosition / (4 * clock_div)))
-          screen.level(level)
+          if velocity_mode then screen.level(2) else screen.level(level) end
           screen.rect(nowPixel, nowHeight, math.floor(128 * displayWidthSubdiv), screenHeight / tracksAmount)
           screen.fill()
           for m=1, #noteEvents do
@@ -536,7 +539,8 @@ function key(k, z)
       end
     end 
     if (not foundOne) then -- if we didn't delete
-      table.insert(noteEvents, 1, {currentTrack, nowPosition, util.round(displayWidthSubdiv, 0.0001)}) -- insert a new note, time four to make the clock work
+			-- insert a new note
+      table.insert(noteEvents, 1, {currentTrack, nowPosition, util.round(displayWidthSubdiv, 0.0001), 100})
       screenDirty = true
       gridDirty= true
     end
@@ -561,6 +565,11 @@ function key(k, z)
     end
     screenDirty,gridDirty = true, true
   end
+
+	-- toggle velocity mode
+	if k==3 and z==1 and heldKeys[1] then
+		if velocity_mode then velocity_mode = false else velocity_mode = true
+	end
 end -- end of buttons
 
 function cleanup() --------------- cleanup() is automatically called on script close
