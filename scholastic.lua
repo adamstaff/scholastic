@@ -388,7 +388,7 @@ function redraw()
       for i=1, #noteEvents do
         if noteEvents[i][3] then
           local x = (noteEvents[i][2] + noteEvents[i][3]/2) * screenWidth
-          local y = (currentTrack -1) * (screenWidth / tracksAmount)
+          local y = 64 - (noteEvents[i][4] / 2)
           screen.move(x,y+4)
           screen.text_center(noteEvents[i][4])
         end
@@ -427,13 +427,13 @@ function redrawGrid()
   g:refresh()--]]
 end
 
-function enc(e, d)
+function enc(e, d) --START ENCODERS
   
   if e == 1 or e==2 then changedBeat = {} end
-  
-  --move cursor between tracks
-  if e==1 and heldKeys[1] then
-    if currentTrack == 0 then
+
+	--E1:
+  if e==1 and heldKeys[1] then 	-- transpose
+    if currentTrack == 0 then		--transpose all
       for i = 1, tracksAmount do
         local nownote = params:get("track"..i.."note")
         params:set("track"..i.."note", nownote + d)
@@ -441,7 +441,7 @@ function enc(e, d)
     else local nownote = params:get("track"..currentTrack.."note")
       params:set("track"..currentTrack.."note", nownote + d)
     end
-  elseif (e == 1 and not velocity_mode) then
+  elseif (e == 1 and not velocity_mode) then	--change track
     local foundit = false
     curXdisp = curXdisp / 128
     if currentTrack > 0 then
@@ -481,11 +481,11 @@ function enc(e, d)
     gridDirty= true
   end
 
-  -- move cursor in time
-  if heldKeys[1] and e==2 then
+	--	E2:
+  if heldKeys[1] and e==2 then	-- engine release
     local release = params:get("Release")
     params:set("Release", release + d * 0.1)
-  elseif heldKeys[1] == false and (e == 2)  and currentTrack > 0 then
+  elseif heldKeys[1] == false and (e == 2)  and currentTrack > 0 then -- 	move cursor in time
     --in/decrement the position in the array
     curXdiv = curXdiv + d
     --going up
@@ -509,11 +509,11 @@ function enc(e, d)
     gridDirty= true
   end
 
-  --adjust beat/subdiv amount
-  if heldKeys[1] and e==3 and not velocity_mode then
+	-- E3:
+  if heldKeys[1] and e==3 and not velocity_mode then	-- engine PW
     local release = params:get("Pulse Width")
     params:set("Pulse Width", util.clamp(release + d * 0.01, 0.01, 0.99))
-  elseif (e == 3 and not velocity_mode) then
+  elseif (e == 3 and not velocity_mode) then 	--adjust beat/subdiv amount
     -- if we're changing beats
     if currentTrack > 0 then
       if curXbeat == 0 then
@@ -523,8 +523,7 @@ function enc(e, d)
           rhythmicDisplay[currentTrack][1] = rhythmicDisplay[currentTrack][1] + 1 end
         else rhythmicDisplay[currentTrack][1] = util.clamp(rhythmicDisplay[currentTrack][1] - 1, 1, 12)
         end
-      -- if we're not on beats, just change the subdiv
-      else
+      else	-- if we're not on beats, just change the subdiv
         rhythmicDisplay[currentTrack][curXbeat + 1] = util.clamp(rhythmicDisplay[currentTrack][curXbeat + 1] + d, 1, 12) end
     else params:set("tracksAmount", util.clamp(tracksAmount + d, 1, 8))  --change number of tracks
       redraw()
@@ -538,7 +537,7 @@ function enc(e, d)
     screenDirty = true
     gridDirty= true
     hudTime = 15
-  elseif e==3 and velocity_mode then
+  elseif e==3 and velocity_mode then	-- adjust note velocity
     change_velocity(d)
   end
 
