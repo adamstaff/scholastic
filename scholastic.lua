@@ -50,11 +50,14 @@ end
 function ticker()
   while isPlaying do
     for i = 1, #noteEvents do                           -- play notes
-      if noteEvents[i][3] and noteEvents[i][1] <= tracksAmount then
+      if noteEvents[i][4] and noteEvents[i][1] <= tracksAmount then
         if math.floor(util.round(clockPosition*192,0.0001)) == math.floor(util.round(noteEvents[i][2] * 192 * (4 * clock_div), 0.0001)) then
           local track = noteEvents[i][1]
 					-- if we want to play a note:
-					if note_output == 1 then engine.hz(MusicUtil.note_num_to_freq(rhythmicDisplay[noteEvents[i][1]]['n'])) end
+					if note_output == 1 then 
+					  engine.amp(noteEvents[i][4]/128)
+					  engine.hz(MusicUtil.note_num_to_freq(rhythmicDisplay[noteEvents[i][1]]['n'])) 
+					end
 					if note_output == 2 then
           	local player = params:lookup_param("voice_id"):get_player()
             player:play_note(rhythmicDisplay[noteEvents[i][1]]['n'], 0.5, noteEvents[i][3])
@@ -143,9 +146,14 @@ function init()
   params:add_number("clock_div", "Clock Divide", 1, 4, 1)
   params:set_action("clock_div", function(x) clock_div = x end)
 	params:add{type="option", id="note_output", name="Output", options=note_destinations, default=1, action=function(x) note_output=x
+	  if x==1 then params:show('Pulse Width')
+	    params:show('Release')
+	    else params:hide('Release') 
+	      params:hide('Pulse Width') 
+	  end
 	  if x==3 then params:show('midi target') else params:hide('midi target') end
 	  if x==2 then params:show('voice_id') else params:hide('voice_id') end
-	   _menu.rebuild_params()
+	  _menu.rebuild_params()
 	end}
 	nb:add_param("voice_id", "nb voice") -- adds a voice selector param to your script.
   nb:add_player_params() -- Adds the parameters for the selected voices to your script.
@@ -154,7 +162,6 @@ function init()
 	midi_device = {} -- container for connected midi devices
   midi_device_names = {}
   midi_target = 1
-
   for i = 1,#midi.vports do -- query all ports
     midi_device[i] = midi.connect(i) -- connect each device
     table.insert(midi_device_names, i..": "..util.trim_string_to_width(midi_device[i].name,80) -- value to insert
@@ -163,7 +170,6 @@ function init()
   params:add_option("midi target", "MIDI Device",midi_device_names,1)
   params:set_action("midi target", function(x) midi_target = x end)
 	--END MIDI--
-  params:add_separator("Engine")
   params:add{type="control",id="Release",controlspec=controlspec.new(0,10,'lin',0,0.5,''),
     action=function(x) engine.release(x) end}
   params:add{type="control",id="Pulse Width",controlspec=controlspec.new(0,1,'lin',0,0.5,''),
@@ -222,11 +228,16 @@ function updateCursor() -- calculate the x position: beat + subdivision, and wid
 end
 
 function change_velocity(d)
+  local displayWidthBeat = 1 / rhythmicDisplay[currentTrack][1]
+  local displayWidthSubdiv = displayWidthBeat / rhythmicDisplay[currentTrack][curXbeat + 1]
   if #noteEvents > 0 then --if we've got any notes at all
     for i=1, #noteEvents do
-      if noteEvents[i][3] then
-        if (currentTrack == noteEvents[i][1] and nowPosition >= noteEvents[i][2] and nowPosition < util.round(noteEvents[i][2] + noteEvents[i][3], 0.0001) ) or (currentTrack == noteEvents[i][1] and nowPosition + displayWidthSubdiv > noteEvents[i][2] and nowPosition + displayWidthSubdiv <= noteEvents[i][2] + noteEvents[i][3]) then
-            noteEvents[4] = noteEvents[4] + d
+      if noteEvents[i][4] then
+        local noteX = math.floor(noteEvents[i][2] * 128) / 128
+        local curX = curXdisp / screenWidth
+        if (currentTrack == noteEvents[i][1] and curX >= noteX and curX < noteX + noteEvents[i][3] ) or (currentTrack == noteEvents[i][1] and curX + displayWidthSubdiv > noteX and curX + displayWidthSubdiv <= noteEvents[i][2] + noteEvents[i][3]) then
+            noteEvents[i][4] = util.clamp(noteEvents[i][4] + d, 1, 127)
+            screenDirty = true
         end
       end
     end
@@ -287,6 +298,8 @@ function redraw()
         screen.level(6)
         if k == 1 then screen.level(15)
           gridlevel = 15 end
+        if velocity_mode then screen.level(4) end
+        if velocity_mode and k ==1 then screen.level(8) end
         screen.move(nowPixel, nowHeight)
         screen.line_rel(0, screenHeight / tracksAmount)
         screen.stroke()
@@ -295,6 +308,7 @@ function redraw()
   end
   --DON"T TOUCH
   
+  -- add a highlight line to each note
   for m=1, #noteEvents do
     screen.level(4)
     screen.move(math.floor(noteEvents[m][2] * screenWidth), (noteEvents[m][1] - 1) * (screenHeight / tracksAmount))
@@ -322,7 +336,7 @@ function redraw()
   end
   --HUD for values
   if heldKeys[1] then
-    if note_output == 1 or note_output == 3 then
+    if note_output == 1 then
       screen.level(2)
       screen.rect(0,57,51,12) --release
       screen.rect(92,57,42, 21) --width
@@ -336,6 +350,13 @@ function redraw()
       screen.text("release: "..params:get("Release"))
       screen.move(127, 63)
       screen.text_right("pw: "..params:get("Pulse Width"))
+    end
+    if note_output == 3 then
+      screen.rect(92,57,42, 21) --w
+      screen.stroke()
+      screen.level(15)
+      screen.move(127, 63)
+      screen.text_right("MIDI device "..midi_device_names[midi_target])
     end
     for i=1, tracksAmount do
       screen.level(2)
@@ -384,13 +405,20 @@ function redraw()
   --HUD for velocity
   if velocity_mode then
     if #noteEvents > 0 then
-      screen.level(15)
       for i=1, #noteEvents do
-        if noteEvents[i][3] then
+        if noteEvents[i][4] and noteEvents[i][1] == currentTrack then
           local x = (noteEvents[i][2] + noteEvents[i][3]/2) * screenWidth
-          local y = 64 - (noteEvents[i][4] / 2)
-          screen.move(x,y+4)
+          local y = 68 - (noteEvents[i][4] / 2)
+          screen.level(15)
+          screen.move(x,y+1)
+          screen.line(x,64)
+          screen.move(x,y)
           screen.text_center(noteEvents[i][4])
+          screen.stroke()
+          screen.move(x,0)
+          screen.level(2)
+          screen.line(x,y-6)
+          screen.stroke()
         end
       end
     end
@@ -543,6 +571,7 @@ function enc(e, d) --START ENCODERS
 
 end -- END OF ENCODERS
 
+-- START OF BUTTONS
 function key(k, z)
   
   heldKeys[k] = z == 1
@@ -600,7 +629,7 @@ function key(k, z)
 	if k==3 and z==1 and heldKeys[1] then
 		if velocity_mode then velocity_mode = false else velocity_mode = true end
 	end
-end -- end of buttons
+end -- END OF BUTTONS
 
 function cleanup() --------------- cleanup() is automatically called on script close
   midi_device[midi_target]:cc(123,0,1) -- all notes off
