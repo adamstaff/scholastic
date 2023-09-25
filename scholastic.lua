@@ -23,12 +23,10 @@
 util = require "util"
 MusicUtil = require "musicutil"
 nb= require "scholastic/lib/nb"
-
 engine.name = 'PolyPerc'
 
 local grid = util.file_exists(_path.code.."midigrid") and include "midigrid/lib/mg_128" or grid
 g = grid.connect()
-
 
 function redraw_clock() ----- a clock that draws space
   while true do ------------- "while true do" means "do this forever"
@@ -60,7 +58,7 @@ function ticker()
 					end
 					if note_output == 2 then
           	local player = params:lookup_param("voice_id"):get_player()
-            player:play_note(rhythmicDisplay[noteEvents[i][1]]['n'], 0.5, noteEvents[i][3])
+            player:play_note(rhythmicDisplay[noteEvents[i][1]]['n'], noteEvents[i][4]/128, noteEvents[i][3])
           end
 					if note_output == 3 then
 					  play_midi_note(rhythmicDisplay[track]['n'], noteEvents[i][3], noteEvents[i][4])
@@ -115,6 +113,7 @@ function init()
     return screen.level(level)
   end
   hudTime = 0						-- times HUD popups when changing params
+  velHudTime = 0						-- times HUD popups when changing velocities
   
   rhythmicDisplay = {    -- [1] = number of beats, then the rest is the subdivion in each beat, 'f'=h z for engine
   }
@@ -250,7 +249,7 @@ function redraw()
 	-- draw note events
 	if velocity_mode then screen.level(1) else screen.level(3) end
   for i=1, #noteEvents do
-    if noteEvents[i][3] then
+    if noteEvents[i][4] then
       screen.rect(
         noteEvents[i][2] * 128, 
         (noteEvents[i][1] - 1) * (screenHeight / tracksAmount),
@@ -299,7 +298,7 @@ function redraw()
         if k == 1 then screen.level(15)
           gridlevel = 15 end
         if velocity_mode then screen.level(4) end
-        if velocity_mode and k ==1 then screen.level(8) end
+        if velocity_mode and k == 1 then screen.level(8) end
         screen.move(nowPixel, nowHeight)
         screen.line_rel(0, screenHeight / tracksAmount)
         screen.stroke()
@@ -307,13 +306,14 @@ function redraw()
     end
   end
   --DON"T TOUCH
-  
   -- add a highlight line to each note
   for m=1, #noteEvents do
-    screen.level(4)
-    screen.move(math.floor(noteEvents[m][2] * screenWidth), (noteEvents[m][1] - 1) * (screenHeight / tracksAmount))
-    screen.line_rel(0, screenHeight / tracksAmount)
-    screen.stroke()
+    if noteEvents[m][4] then
+      screen.level(4)
+      screen.move(math.floor(noteEvents[m][2] * screenWidth), (noteEvents[m][1] - 1) * (screenHeight / tracksAmount))
+      screen.line_rel(0, screenHeight / tracksAmount)
+      screen.stroke()
+    end
   end
   
   -- rectangle for cursor outside
@@ -404,21 +404,38 @@ function redraw()
   
   --HUD for velocity
   if velocity_mode then
+    velHudTime = velHudTime - 1
     if #noteEvents > 0 then
       for i=1, #noteEvents do
         if noteEvents[i][4] and noteEvents[i][1] == currentTrack then
           local x = (noteEvents[i][2] + noteEvents[i][3]/2) * screenWidth
-          local y = 68 - (noteEvents[i][4] / 2)
+          local y = 63 - (noteEvents[i][4] / 2)
+          --bottom line
           screen.level(15)
           screen.move(x,y+1)
           screen.line(x,64)
-          screen.move(x,y)
-          screen.text_center(noteEvents[i][4])
+          --horiz line
+          screen.move(noteEvents[i][2]* screenWidth,y+1)
+          screen.line((noteEvents[i][2] + noteEvents[i][3])* screenWidth,y+1)
           screen.stroke()
+          --text
+          if velHudTime > 0 and curXdisp == noteEvents[i][2]*128 then
+            screen.level(1)
+            screen.rect(x-5,y-5,11,7)
+            screen.fill()
+            screen.level(15)
+            local ty = 0
+            if y < 5 then ty = 5 else ty = y end
+            screen.move(x,ty)
+            screen.text_center(noteEvents[i][4])
+            screen.stroke()
+          end
+          if velHudTime < 0 then velHudTime = 0 end
+          --[[top line
           screen.move(x,0)
           screen.level(2)
-          screen.line(x,y-6)
-          screen.stroke()
+          screen.line(x,y)
+          screen.stroke()]]--
         end
       end
     end
@@ -567,6 +584,7 @@ function enc(e, d) --START ENCODERS
     hudTime = 15
   elseif e==3 and velocity_mode then	-- adjust note velocity
     change_velocity(d)
+    velHudTime = 15
   end
 
 end -- END OF ENCODERS
@@ -582,7 +600,7 @@ function key(k, z)
     local foundOne = false
     local displayWidthBeat = 1 / rhythmicDisplay[currentTrack][1]
     local displayWidthSubdiv = displayWidthBeat / rhythmicDisplay[currentTrack][curXbeat + 1]
-    local nowPosition = displayWidthBeat * (curXbeat - 1) + displayWidthSubdiv * (curXdiv - 1)
+    local nowPosition = util.round(displayWidthBeat * (curXbeat - 1) + displayWidthSubdiv * (curXdiv - 1), 1/128)
 
     if #noteEvents > 0 then --if we've got any notes at all
       for i=1, #noteEvents do
@@ -599,7 +617,7 @@ function key(k, z)
     end 
     if (not foundOne) then -- if we didn't delete
 			-- insert a new note
-      table.insert(noteEvents, 1, {currentTrack, nowPosition, util.round(displayWidthSubdiv, 0.0001), 100})
+      table.insert(noteEvents, 1, {currentTrack, nowPosition, util.round(displayWidthSubdiv, 1/128), 100})
       screenDirty = true
       gridDirty= true
     end
