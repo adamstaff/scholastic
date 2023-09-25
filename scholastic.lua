@@ -1,24 +1,28 @@
 -- # scholastic
--- A norns script that borrows
--- ideas from Modalics's Beat 
--- Scholar:
--- https://www.modalics.com/
--- beatscholar
+-- by adamstaff
+--
+-- Polyrhythms, bolero, trap
+-- Polyperc, nb, MIDI
 -- 
+--    ▼ instructions below ▼
+--
+-- Knobs:
+--
 -- E1: Select track
 -- - Scroll to track 0 to change 
 --   number of tracks with E3
 -- E2: Select position
 -- - Scroll to beat 0 to change 
 --   number of beats with E3
--- E3 - -+ tracks/beat/division
+-- E3: change track/beat/velocity
 -- K1 + E1: Transpose
--- K1 + E2: Engine Release
--- K1 + E3: Engine PWidth
 -- 
+-- Buttons:
+-- 
+-- K1 (hold): Shift
 -- K2: Play/Stop
 -- K3: Insert / remove a note
--- K1 + K3: Edit Velocity
+-- K1 + K3: Velocity editor
 
 util = require "util"
 MusicUtil = require "musicutil"
@@ -274,7 +278,8 @@ function draw_note_events()
   for i=1, #noteEvents do
     if noteEvents[i][4] then
       trackHeight = (screenHeight / tracksAmount)
-      screen.level(3)
+      screen.level(3
+)
       if isPlaying and clockPosition/(4 * clock_div) >= noteEvents[i][2] and clockPosition/(4 * clock_div) < (noteEvents[i][2] + noteEvents[i][3]) then
         local sl = 15 + math.floor(15 * (noteEvents[i][2] - clockPosition/(4 * clock_div)))
         screen.level(sl)
@@ -380,7 +385,7 @@ function redraw()
       screen.move(127, 63)
       screen.text_right("pw: "..params:get("Pulse Width"))
     end
-    if note_output == 2 then
+    --[[if note_output == 2 then
       screen.level(2)
       screen.rect(80,57,55, 21) --voice
       screen.fill()
@@ -397,7 +402,7 @@ function redraw()
       screen.level(15)
       screen.move(127, 63)
       screen.text_right("MIDI device "..midi_device_names[midi_target])
-    end
+    end]]
     for i=1, tracksAmount do
       screen.level(2)
       screen.rect(58,((screenHeight / tracksAmount) / 2) + (i - 1) * (screenHeight / tracksAmount) - 4,12,8) --note
@@ -455,11 +460,11 @@ function redraw()
           screen.move(x,y+1)
           screen.line(x,64)
           --horiz line
-          screen.move(noteEvents[i][2]* screenWidth,y+1)
-          screen.line((noteEvents[i][2] + noteEvents[i][3])* screenWidth,y+1)
+          screen.move(math.floor(noteEvents[i][2] * screenWidth), y+1)
+          screen.line_rel(math.floor(noteEvents[i][3] * screenWidth), 0)
           screen.stroke()
           --text
-          if velHudTime > 0 and curXdisp == noteEvents[i][2]*128 then
+          if velHudTime > 0 and curXdisp + curXwidth/2 >= noteEvents[i][2]*128 and curXdisp + curXwidth/2 < (noteEvents[i][2]+noteEvents[i][3])*128 then
             screen.level(1)
             screen.rect(x-5,y-5,11,7)
             screen.fill()
