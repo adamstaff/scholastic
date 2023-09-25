@@ -1,8 +1,9 @@
--- # scholastic
--- by adamstaff
+-- scholastic by adamstaff
 --
--- Polyrhythms, bolero, trap
--- Polyperc, nb, MIDI
+-- / Polyrhythms, bolero, trap
+-- bouncing balls, raindrops /
+--
+-- for polyperc, nb, MIDI
 -- 
 --    ▼ instructions below ▼
 --
