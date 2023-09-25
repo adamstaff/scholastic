@@ -1,4 +1,5 @@
 -- # scholastic
+-- by @adamstaff
 -- A norns script that borrows
 -- ideas from Modalics's Beat 
 -- Scholar:
@@ -261,11 +262,7 @@ function draw_note_events()
   end
 end
 
-function redraw()
-  screen.clear()
-
-	draw_note_events()
-
+function draw_beat_lines()
 --DON'T TOUCH -- THIS IS WORKING
   -- lines for each beat and subdivision
   trackHeight = 1 / tracksAmount
@@ -313,7 +310,9 @@ function redraw()
     end
   end
   --DON"T TOUCH
+end
 
+function draw_cursor_box()
   -- rectangle for cursor outside
   if currentTrack == 0 then
     curFlash()
@@ -331,7 +330,28 @@ function redraw()
     screen.level(1)
     screen.rect(curXdisp+2, y + 2, math.max(curXwidth - 4, 0), l - 3)
     screen.stroke()
+    --pixels to show v/h position
+    screen.level(8)
+    screen.move(0, y + trackHeight * 32)
+    screen.line_rel(1, 0)
+    screen.move_rel(127, 0)
+    screen.line_rel(-1, 0)
+    screen.move(curXdisp + curXwidth/2, 0)
+    screen.line_rel(0, 1)
+    screen.move_rel(0, 64)
+    screen.line_rel(0, -2)
+    screen.stroke()
   end
+end
+
+function redraw()
+  screen.clear()
+
+	draw_note_events()
+	draw_beat_lines()
+
+  draw_cursor_box()
+  
   --HUD for values
   if heldKeys[1] then
     if note_output == 1 then
@@ -348,6 +368,17 @@ function redraw()
       screen.text("release: "..params:get("Release"))
       screen.move(127, 63)
       screen.text_right("pw: "..params:get("Pulse Width"))
+    end
+    if note_output == 2 then
+      screen.level(2)
+      screen.rect(92,57,42, 21) --width
+      screen.fill()
+      screen.level(1)
+      screen.rect(92,57,42, 21) --w
+      screen.stroke()
+      screen.level(15)
+      screen.move(127, 63)
+      screen.text_right("voice: "..params:get("voice_id"))
     end
     if note_output == 3 then
       screen.rect(92,57,42, 21) --w
