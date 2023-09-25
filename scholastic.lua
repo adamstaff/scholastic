@@ -51,14 +51,15 @@ function ticker()
       if noteEvents[i][4] and noteEvents[i][1] <= tracksAmount then
         if math.floor(util.round(clockPosition*192,0.0001)) == math.floor(util.round(noteEvents[i][2] * 192 * (4 * clock_div), 0.0001)) then
           local track = noteEvents[i][1]
+          local dvel = noteEvents[i][4]/128
 					-- if we want to play a note:
 					if note_output == 1 then 
-					  engine.amp(noteEvents[i][4]/128)
+					  engine.amp(dvel)
 					  engine.hz(MusicUtil.note_num_to_freq(rhythmicDisplay[noteEvents[i][1]]['n'])) 
 					end
 					if note_output == 2 then
           	local player = params:lookup_param("voice_id"):get_player()
-            player:play_note(rhythmicDisplay[noteEvents[i][1]]['n'], noteEvents[i][4]/128, noteEvents[i][3])
+            player:play_note(rhythmicDisplay[noteEvents[i][1]]['n'], dvel, noteEvents[i][3])
           end
 					if note_output == 3 then
 					  play_midi_note(rhythmicDisplay[track]['n'], noteEvents[i][3], noteEvents[i][4])
@@ -227,18 +228,35 @@ function updateCursor() -- calculate the x position: beat + subdivision, and wid
 end
 
 function change_velocity(d)
-  local displayWidthBeat = 1 / rhythmicDisplay[currentTrack][1]
-  local displayWidthSubdiv = displayWidthBeat / rhythmicDisplay[currentTrack][curXbeat + 1]
   if #noteEvents > 0 then --if we've got any notes at all
+    local displayWidthBeat = 1 / rhythmicDisplay[currentTrack][1]
+    local displayWidthSubdiv = displayWidthBeat / rhythmicDisplay[currentTrack][curXbeat + 1]
+    local nowMiddle = util.round(displayWidthBeat * (curXbeat - 1) + displayWidthSubdiv * (curXdiv - 1) + (displayWidthSubdiv / 2), 1/128)
     for i=1, #noteEvents do
-      if noteEvents[i][4] then
-        local noteX = math.floor(noteEvents[i][2] * 128) / 128
-        local curX = curXdisp / screenWidth
-        if (currentTrack == noteEvents[i][1] and curX >= noteX and curX < noteX + noteEvents[i][3] ) or (currentTrack == noteEvents[i][1] and curX + displayWidthSubdiv > noteX and curX + displayWidthSubdiv <= noteEvents[i][2] + noteEvents[i][3]) then
+      if noteEvents[i][4] and currentTrack == noteEvents[i][1] and nowMiddle >= noteEvents[i][2] and nowMiddle < noteEvents[i][2] + noteEvents[i][3] then
             noteEvents[i][4] = util.clamp(noteEvents[i][4] + d, 1, 127)
             screenDirty = true
-        end
       end
+    end
+  end
+end
+
+function draw_note_events()
+  local sl = 3
+  if velocity_mode then sl=1 end
+  for i=1, #noteEvents do
+    if noteEvents[i][4] then
+      screen.level(sl)
+      screen.rect(
+        noteEvents[i][2] * 128, 
+        (noteEvents[i][1] - 1) * (screenHeight / tracksAmount),
+        noteEvents[i][3] * 128,
+        screenHeight / tracksAmount)
+      screen.fill()
+      screen.level(6)
+      screen.move(noteEvents[i][2] * screenWidth, (noteEvents[i][1] - 1) * (screenHeight / tracksAmount))
+      screen.line_rel(0, screenHeight / (tracksAmount * 2))
+      screen.stroke()
     end
   end
 end
@@ -246,18 +264,7 @@ end
 function redraw()
   screen.clear()
 
-	-- draw note events
-	if velocity_mode then screen.level(1) else screen.level(3) end
-  for i=1, #noteEvents do
-    if noteEvents[i][4] then
-      screen.rect(
-        noteEvents[i][2] * 128, 
-        (noteEvents[i][1] - 1) * (screenHeight / tracksAmount),
-        noteEvents[i][3] * 128, 
-        screenHeight / tracksAmount)
-      screen.fill()
-    end
-  end
+	draw_note_events()
 
 --DON'T TOUCH -- THIS IS WORKING
   -- lines for each beat and subdivision
@@ -271,22 +278,22 @@ function redraw()
 			--for each subdivision:
       for k = 1, rhythmicDisplay[i][j + 1] do
         --calculate the x, y position and height of each line
-        nowPosition = displayWidthBeat * (j - 1) + displayWidthSubdiv * (k - 1) -- get x pos 0-1
-        nowPixel = math.floor(nowPosition * screenWidth) -- covert to pixel
+        nowPosition = util.round(displayWidthBeat * (j - 1) + displayWidthSubdiv * (k - 1), 1/128) -- get x pos 0-1
+        nowPixel = nowPosition * screenWidth -- covert to pixel
         nowHeight = math.floor(trackHeight * (i - 1) * screenHeight) -- get y pos pixel
         --draw squares, flashing if playing back
         if isPlaying and clockPosition/(4 * clock_div) >= nowPosition  and clockPosition/(4 * clock_div) < nowPosition + displayWidthSubdiv then
           --flash squares, or don't
           local level = 1 + math.floor(10 * (nowPosition + displayWidthSubdiv - clockPosition / (4 * clock_div)))
           if velocity_mode then screen.level(2) else screen.level(level) end
-          screen.rect(nowPixel, nowHeight, math.floor(128 * displayWidthSubdiv), screenHeight / tracksAmount)
+          screen.rect(nowPixel, nowHeight, 128 * displayWidthSubdiv, screenHeight / tracksAmount)
           screen.fill()
           for m=1, #noteEvents do
-            if noteEvents[m][3] then
+            if noteEvents[m][4] then
               if i == noteEvents[m][1] and clockPosition/(4 * clock_div) >= noteEvents[m][2] and clockPosition/(4*clock_div) < noteEvents[m][2] + noteEvents[m][3] then
                 local level = 8 + math.floor(25 * (nowPosition + displayWidthSubdiv - clockPosition/(4*clock_div)))
                 screen.level(level)
-                screen.rect(noteEvents[m][2] * 128, nowHeight, math.floor(screenWidth * noteEvents[m][3]), screenHeight / tracksAmount)
+                screen.rect(util.round(noteEvents[m][2],1/128) * 128, nowHeight, screenWidth * util.round(noteEvents[m][3],1/128), screenHeight / tracksAmount)
                 screen.fill()
               end
             end
@@ -294,7 +301,7 @@ function redraw()
         end
         --draw the lines
         local gridlevel = 5
-        screen.level(6)
+        screen.level(10)
         if k == 1 then screen.level(15)
           gridlevel = 15 end
         if velocity_mode then screen.level(4) end
@@ -306,16 +313,7 @@ function redraw()
     end
   end
   --DON"T TOUCH
-  -- add a highlight line to each note
-  for m=1, #noteEvents do
-    if noteEvents[m][4] then
-      screen.level(4)
-      screen.move(math.floor(noteEvents[m][2] * screenWidth), (noteEvents[m][1] - 1) * (screenHeight / tracksAmount))
-      screen.line_rel(0, screenHeight / tracksAmount)
-      screen.stroke()
-    end
-  end
-  
+
   -- rectangle for cursor outside
   if currentTrack == 0 then
     curFlash()
@@ -601,11 +599,12 @@ function key(k, z)
     local displayWidthBeat = 1 / rhythmicDisplay[currentTrack][1]
     local displayWidthSubdiv = displayWidthBeat / rhythmicDisplay[currentTrack][curXbeat + 1]
     local nowPosition = util.round(displayWidthBeat * (curXbeat - 1) + displayWidthSubdiv * (curXdiv - 1), 1/128)
+    local nowMiddle = util.round(displayWidthBeat * (curXbeat - 1) + displayWidthSubdiv * (curXdiv - 1) + (displayWidthSubdiv / 2), 1/128)
 
     if #noteEvents > 0 then --if we've got any notes at all
       for i=1, #noteEvents do
         if noteEvents[i][4] then
-          if (currentTrack == noteEvents[i][1] and nowPosition >= noteEvents[i][2] and nowPosition < util.round(noteEvents[i][2] + noteEvents[i][3], 0.0001) ) or (currentTrack == noteEvents[i][1] and nowPosition + displayWidthSubdiv > noteEvents[i][2] and nowPosition + displayWidthSubdiv <= noteEvents[i][2] + noteEvents[i][3]) then
+          if (currentTrack == noteEvents[i][1] and nowMiddle >= noteEvents[i][2] and nowMiddle < util.round(noteEvents[i][2] + noteEvents[i][3], 1/128) ) then
             --remove this note
             table.remove(noteEvents[i])
             print('removed note '..i..' at '..nowPosition)
@@ -619,7 +618,7 @@ function key(k, z)
     if (not foundOne) then -- if we didn't delete
 			-- insert a new note
       table.insert(noteEvents, 1, {currentTrack, nowPosition, util.round(displayWidthSubdiv, 1/128), 100})
-      print('added note at '..nowPosition)
+      print('added note at '..nowPosition..' aka pixel '..nowPosition*128)
       screenDirty = true
       gridDirty= true
     end
