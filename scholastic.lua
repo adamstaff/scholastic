@@ -604,10 +604,11 @@ function key(k, z)
 
     if #noteEvents > 0 then --if we've got any notes at all
       for i=1, #noteEvents do
-        if noteEvents[i][3] then
+        if noteEvents[i][4] then
           if (currentTrack == noteEvents[i][1] and nowPosition >= noteEvents[i][2] and nowPosition < util.round(noteEvents[i][2] + noteEvents[i][3], 0.0001) ) or (currentTrack == noteEvents[i][1] and nowPosition + displayWidthSubdiv > noteEvents[i][2] and nowPosition + displayWidthSubdiv <= noteEvents[i][2] + noteEvents[i][3]) then
             --remove this note
             table.remove(noteEvents[i])
+            print('removed note '..i..' at '..nowPosition)
             foundOne = true
             screenDirty = true
             gridDirty= true
@@ -618,6 +619,7 @@ function key(k, z)
     if (not foundOne) then -- if we didn't delete
 			-- insert a new note
       table.insert(noteEvents, 1, {currentTrack, nowPosition, util.round(displayWidthSubdiv, 1/128), 100})
+      print('added note at '..nowPosition)
       screenDirty = true
       gridDirty= true
     end
